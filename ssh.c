@@ -16,92 +16,127 @@
 #include <unistd.h>
 
 #include "libvzsock.h"
+#include "vzsock.h"
 #include "ssh.h"
 #include "util.h"
 
-static void _vz_ssh_clean(struct vzsock_ctx *ctx);
-static int _vz_ssh_test_conn(struct vzsock_ctx *ctx); 
-static int _vz_ssh_main_conn(struct vzsock_ctx *ctx, char * const args[]);
-static int _vz_ssh_close(struct vzsock_ctx *ctx);
-static int _vz_ssh_set(struct vzsock_ctx *ctx, int type, void *data);
+static int test_conn(struct vzsock_ctx *ctx);
+
+static int open_ctx(struct vzsock_ctx *ctx);
+static void close_ctx(struct vzsock_ctx *ctx);
+/* set context parameter(s) */
+static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size);
+
+/* open new connection */
+static int open_conn(struct vzsock_ctx *ctx, char * const args[], void **conn);
+static int close_conn(struct vzsock_ctx *ctx, void *conn);
+/* set connection parameter(s) */
+static int set_conn(struct vzsock_ctx *ctx, void *conn, 
+		int type, void *data, size_t size);
 
 
-int _vz_ssh_init(struct vzsock *vzs)
+int _vzs_ssh_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 {
-	struct ssh_conn *cn;
+	struct ssh_data *data;
 
-	vzs->type = VZSOCK_SSH;
-	vzs->clean = _vz_ssh_clean;
-	vzs->test_conn = _vz_ssh_test_conn;
-	vzs->create_main_conn = _vz_ssh_main_conn;
-	vzs->close = _vz_ssh_close;
-	vzs->set = _vz_ssh_set;
-//	vzs->recv_str = ;
-//	vzs->send = ;
-//	vzs->close = ;
-//	vzs->is_connected = ;
+	if ((data = (struct ssh_data *)malloc(sizeof(struct ssh_data))) == NULL)
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
 
-	if ((cn = (struct ssh_conn *)malloc(sizeof(struct ssh_conn))) == NULL)
-		return _vz_error(&vzs->ctx, VZS_ERR_SYSTEM, "malloc() : %m");
+	data->hostname = NULL;
+	ctx->type = VZSOCK_SSH;
+	ctx->data = (void *)data;
 
-	cn->askfile[0] = '\0';
-	cn->in = -1;
-	cn->out = -1;
-	cn->pid = 0;
-	cn->hostname = NULL;
-	vzs->ctx.conn = (void *)cn;
+	handlers->open = open_ctx;
+	handlers->close = close_ctx;
+	handlers->set = set_ctx;
+	handlers->open_conn = open_conn;
+	handlers->close_conn = close_conn;
+	handlers->set_conn = set_conn;
 
 	return 0;
 }
 
-static void _vz_ssh_clean(struct vzsock_ctx *ctx)
+/* open context: create test connection */
+static int open_ctx(struct vzsock_ctx *ctx)
 {
-	struct ssh_conn *cn = (struct ssh_conn *)ctx->conn;
+	int rc;
 
-	_vz_ssh_close(ctx);
+	/* open and close test connection : to get password */
+	if ((rc = test_conn(ctx)))
+		return rc;
 
-	if (cn->hostname)
-		free(cn->hostname);
+	return 0;
+}
 
-	free(ctx->conn);
-	ctx->conn = NULL;
+static void close_ctx(struct vzsock_ctx *ctx)
+{
+	struct ssh_data *data = (struct ssh_data *)ctx->data;
+
+	if (data->hostname)
+		free(data->hostname);
+
+	free(ctx->data);
+	ctx->data = NULL;
 
 	return;
 }
 
+/* set context parameter(s) */
+static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size)
+{
+	struct ssh_data *sshdata = (struct ssh_data *)ctx->data;
+
+	switch (type) {
+	case VZSOCK_DATA_HOSTNAME:
+	{
+		if (sshdata->hostname)
+			free(sshdata->hostname);
+
+		if ((sshdata->hostname = malloc(size)) == NULL)
+			return _vz_error(ctx, VZS_ERR_SYSTEM, "strdup() : %m");
+		memcpy(sshdata->hostname, data, size);
+		break;
+	}
+	default:
+		return _vz_error(ctx, VZS_ERR_BAD_PARAM, 
+			"Unknown data type : %d", type);
+	}
+	return 0;
+}
+
 /* get default ssh options
    TODO: customized */
-static int _vz_ssh_get_args(
+static int get_args(
 		struct vzsock_ctx *ctx, 
-		struct vz_string_list *args)
+		struct vzs_string_list *args)
 {
-	if (_vz_string_list_add(args, "ssh"))
+	if (_vzs_string_list_add(args, "ssh"))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
-	if (_vz_string_list_add(args, "-T"))
+	if (_vzs_string_list_add(args, "-T"))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
-	if (_vz_string_list_add(args, "-q"))
+	if (_vzs_string_list_add(args, "-q"))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
-	if (_vz_string_list_add(args, "-c"))
+	if (_vzs_string_list_add(args, "-c"))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
         /* blowfish is faster then DES3,
            but arcfour is faster then blowfish, according #84995 */
-	if (_vz_string_list_add(args, "arcfour"))
+	if (_vzs_string_list_add(args, "arcfour"))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
-	if (_vz_string_list_add(args, "-o"))
+	if (_vzs_string_list_add(args, "-o"))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
-	if (_vz_string_list_add(args, "StrictHostKeyChecking=no"))
+	if (_vzs_string_list_add(args, "StrictHostKeyChecking=no"))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
-	if (_vz_string_list_add(args, "-o"))
+	if (_vzs_string_list_add(args, "-o"))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
-	if (_vz_string_list_add(args, "CheckHostIP=no"))
+	if (_vzs_string_list_add(args, "CheckHostIP=no"))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
-	if (_vz_string_list_add(args, "-o"))
+	if (_vzs_string_list_add(args, "-o"))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
-	if (_vz_string_list_add(args, "UserKnownHostsFile=/dev/null"))
+	if (_vzs_string_list_add(args, "UserKnownHostsFile=/dev/null"))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
-	if (_vz_string_list_add(args, "-o"))
+	if (_vzs_string_list_add(args, "-o"))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
-	if (_vz_string_list_add(args, 
+	if (_vzs_string_list_add(args, 
 			"PreferredAuthentications=publickey,password,"\
 			"keyboard-interactive"))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
@@ -111,7 +146,7 @@ static int _vz_ssh_get_args(
 
 
 /* create test ssh connection */
-static int _vz_ssh_test_conn(struct vzsock_ctx *ctx) 
+static int test_conn(struct vzsock_ctx *ctx) 
 {
 	pid_t pid, chpid;
 	int rc = 0;
@@ -120,23 +155,23 @@ static int _vz_ssh_test_conn(struct vzsock_ctx *ctx)
 	char script[PATH_MAX + 1];
 	int td, sd;
 	FILE *fp;
-	struct vz_string_list argl;
+	struct vzs_string_list argl;
 	char **argv;
 	int i;
-	struct ssh_conn *cn = (struct ssh_conn *)ctx->conn;
+	struct ssh_data *data = (struct ssh_data *)ctx->data;
 
-	_vz_string_list_init(&argl);
-	if ((rc = _vz_ssh_get_args(ctx, &argl)))
+	_vzs_string_list_init(&argl);
+	if ((rc = get_args(ctx, &argl)))
 		return rc;
-	if (_vz_string_list_add(&argl, cn->hostname)) {
+	if (_vzs_string_list_add(&argl, data->hostname)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
 		goto cleanup_0;
 	}
-	if (_vz_string_list_add(&argl, "true")) {
+	if (_vzs_string_list_add(&argl, "true")) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
 		goto cleanup_0;
 	}
-	if (_vz_string_list_to_array(&argl, &argv)) {
+	if (_vzs_string_list_to_array(&argl, &argv)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
 		goto cleanup_0;
 	}
@@ -144,7 +179,7 @@ static int _vz_ssh_test_conn(struct vzsock_ctx *ctx)
 	if (ctx->debug) {
 		char buffer[BUFSIZ+1];
 		buffer[0] = '\0';
-		_vz_string_list_to_buf(&argl, buffer, sizeof(buffer));
+		_vzs_string_list_to_buf(&argl, buffer, sizeof(buffer));
 		_vz_logger(ctx, LOG_DEBUG, 
 			"establish test ssh channel: %s", buffer);
 	}
@@ -221,7 +256,7 @@ static int _vz_ssh_test_conn(struct vzsock_ctx *ctx)
 				ctx->readpwd(prompt, 
 					ctx->password, sizeof(ctx->password));
 			else
-				_vz_read_password(prompt, 
+				_vzs_read_password(prompt, 
 					ctx->password, sizeof(ctx->password));
 		}
 	} else if (WIFSIGNALED(status)) {
@@ -245,7 +280,7 @@ cleanup_1:
 		free((void *)argv[i]);
 	free((void *)argv);
 cleanup_0:
-	_vz_string_list_clean(&argl);
+	_vzs_string_list_clean(&argl);
 
 	return rc;
 }
@@ -291,33 +326,42 @@ static int generate_askpass(
 	return 0;
 }
 
-/* start ssh connection */
-static int _vz_ssh_main_conn(struct vzsock_ctx *ctx, char * const args[])
+/* open new connection */
+static int open_conn(struct vzsock_ctx *ctx, char * const args[], void **conn)
 {
 	int rc = 0;
 	pid_t pid, ssh_pid;
 	int in[2], out[2];
 	int status;
-	struct ssh_conn *cn = (struct ssh_conn *)ctx->conn;
-	struct vz_string_list argl;
+	struct ssh_conn *cn;
+	struct vzs_string_list argl;
 	char **argv;
 	int i;
+	struct ssh_data *data = (struct ssh_data *)ctx->data;
 
-	_vz_string_list_init(&argl);
-	if ((rc = _vz_ssh_get_args(ctx, &argl)))
+	if ((cn = (struct ssh_conn *)malloc(sizeof(struct ssh_conn))) == NULL)
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
+	cn->askfile[0] = '\0';
+	cn->in = -1;
+	cn->out = -1;
+	cn->pid = 0;
+	*conn = cn;
+
+	_vzs_string_list_init(&argl);
+	if ((rc = get_args(ctx, &argl)))
 		return rc;
-	if (_vz_string_list_add(&argl, cn->hostname)) {
+	if (_vzs_string_list_add(&argl, data->hostname)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
 		goto cleanup_0;
 	}
 	for (i = 0; args[i]; i++) {
-		if (_vz_string_list_add(&argl, args[i])) {
+		if (_vzs_string_list_add(&argl, args[i])) {
 			rc = _vz_error(ctx, 
 				VZS_ERR_SYSTEM, "memory alloc : %m");
 			goto cleanup_0;
 		}
 	}
-	if (_vz_string_list_to_array(&argl, &argv)) {
+	if (_vzs_string_list_to_array(&argl, &argv)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
 		goto cleanup_0;
 	}
@@ -325,7 +369,7 @@ static int _vz_ssh_main_conn(struct vzsock_ctx *ctx, char * const args[])
 	if (ctx->debug) {
 		char buffer[BUFSIZ+1];
 		buffer[0] = '\0';
-		_vz_string_list_to_buf(&argl, buffer, sizeof(buffer));
+		_vzs_string_list_to_buf(&argl, buffer, sizeof(buffer));
 		_vz_logger(ctx, LOG_DEBUG, 
 			"establish test ssh channel: %s", buffer);
 	}
@@ -387,35 +431,32 @@ cleanup_1:
 		free((void *)argv[i]);
 	free((void *)argv);
 cleanup_0:
-	_vz_string_list_clean(&argl);
+	_vzs_string_list_clean(&argl);
 
 	return rc;
 }
 
-static int _vz_ssh_close(struct vzsock_ctx *ctx)
+static int close_conn(struct vzsock_ctx *ctx, void *conn)
 {
-	struct ssh_conn *cn = (struct ssh_conn *)ctx->conn;
+	struct ssh_conn *cn = (struct ssh_conn *)conn;
 
 	if (cn->pid == 0)
 		return 0;
 /* TODO: check retcode and SIGKILL ? */
 	kill(cn->pid, SIGTERM);
 	cn->pid = 0;
+	free(conn);
 
 	return 0;
 }
 
-static int _vz_ssh_set(struct vzsock_ctx *ctx, int type, void *data)
+/* set connection parameter(s) */
+static int set_conn(struct vzsock_ctx *ctx, void *conn, 
+		int type, void *data, size_t size)
 {
-	struct ssh_conn *cn = (struct ssh_conn *)ctx->conn;
+	struct ssh_conn *cn = (struct ssh_conn *)conn;
 
 	switch (type) {
-	case VZSOCK_DATA_HOSTNAME:
-	{
-		if ((cn->hostname = strdup((char *)data)) == NULL)
-			return _vz_error(ctx, VZS_ERR_SYSTEM, "strdup() : %m");
-		break;
-	}
 	case VZSOCK_DATA_FDPAIR:
 	{
 		/* set socket pair */

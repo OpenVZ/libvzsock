@@ -19,80 +19,120 @@
 #include "sock.h"
 #include "util.h"
 
-static void _vz_sock_clean(struct vzsock_ctx *ctx);
-static int _vz_sock_dummy(struct vzsock_ctx *ctx); 
-static int _vz_sock_conn(struct vzsock_ctx *ctx, char * const args[]);
-static int _vz_sock_close(struct vzsock_ctx *ctx);
-static int _vz_sock_set(struct vzsock_ctx *ctx, int type, void *data);
+static int open_ctx(struct vzsock_ctx *ctx);
+static void close_ctx(struct vzsock_ctx *ctx);
+static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size);
+static int open_conn(struct vzsock_ctx *ctx, char * const args[], void **conn);
+static int close_conn(struct vzsock_ctx *ctx, void *conn);
+static int set_conn(struct vzsock_ctx *ctx, void *conn, 
+		int type, void *data, size_t size);
 
 
-int _vz_sock_init(struct vzsock *vzs)
+int _vzs_sock_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 {
-	struct sock_conn *cn;
+	struct sock_data *data;
 
-	vzs->type = VZSOCK_SOCK;
-	vzs->clean = _vz_sock_clean;
-	vzs->test_conn = _vz_sock_dummy;
-	vzs->create_main_conn = _vz_sock_conn;
-	vzs->close = _vz_sock_close;
-	vzs->set = _vz_sock_set;
-//	vzs->recv_str = ;
-//	vzs->send = ;
-//	vzs->close = ;
-//	vzs->is_connected = ;
+	if ((data = (struct sock_data *)malloc(sizeof(struct sock_data))) == NULL)
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
 
-	if ((cn = (struct sock_conn *)malloc(sizeof(struct sock_conn))) == NULL)
-		return _vz_error(&vzs->ctx, VZS_ERR_SYSTEM, "malloc() : %m");
+	data->domain = PF_INET;
+	data->type = SOCK_STREAM;
+	data->addr = NULL;
+	data->addr_len = 0;
 
-	cn->domain = PF_UNIX;
-	cn->type = SOCK_STREAM;
-	cn->sock = -1;
-	cn->addr = NULL;
-	cn->addr_len = 0;
+	ctx->type = VZSOCK_SOCK;
+	ctx->data = (void *)data;
 
-	vzs->ctx.conn = (void *)cn;
+	handlers->open = open_ctx;
+	handlers->close = close_ctx;
+	handlers->set = set_ctx;
+	handlers->open_conn = open_conn;
+	handlers->close_conn = close_conn;
+	handlers->set_conn = set_conn;
 
 	return 0;
-} 
+}
 
-static void _vz_sock_clean(struct vzsock_ctx *ctx)
+/* open context */
+static int open_ctx(struct vzsock_ctx *ctx)
 {
-//	struct ssh_conn *cn = (struct ssh_conn *)ctx->conn;
-	/* do nothing */
-	_vz_sock_close(ctx);
+	return 0;
+}
 
-	free(ctx->conn);
-	ctx->conn = NULL;
+static void close_ctx(struct vzsock_ctx *ctx)
+{
+	struct sock_data *data = (struct sock_data *)ctx->data;
+
+	if (data->addr)
+		free(data->addr);
+
+	free(ctx->data);
+	ctx->data = NULL;
 
 	return;
 }
 
-static int _vz_sock_dummy(struct vzsock_ctx *ctx) 
+static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size)
 {
+	struct sock_data *sockdata = (struct sock_data *)ctx->data;
+
+	switch (type) {
+	case VZSOCK_DATA_SOCK_DOMAIN:
+	{
+		/* set socket domain */
+		memcpy(&sockdata->domain, data, sizeof(sockdata->domain));
+		break;
+	}
+	case VZSOCK_DATA_SOCK_TYPE:
+	{
+		/* set socket type */
+		memcpy(&sockdata->type, data, sizeof(sockdata->type));
+		break;
+	}
+	case VZSOCK_DATA_ADDR:
+	{
+		if (sockdata->addr)
+			free((void *)sockdata->addr);
+
+		if ((sockdata->addr = (struct sockaddr *)malloc(size)) == NULL)
+			return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
+		memcpy(sockdata->addr, data, size);
+		sockdata->addr_len = (socklen_t)size;
+		break;
+	}
+	default:
+		return _vz_error(ctx, VZS_ERR_BAD_PARAM, 
+			"Unknown data type : %d", type);
+	}
 	return 0;
 }
 
 /* start connection */
-static int _vz_sock_conn(struct vzsock_ctx *ctx, char * const args[])
+static int open_conn(struct vzsock_ctx *ctx, char * const args[], void **conn)
 {
 	int rc = 0;
-	struct sock_conn *cn = (struct sock_conn *)ctx->conn;
+	struct sock_data *data = (struct sock_data *)ctx->data;
+	struct sock_conn *cn;
 
-	if (cn->addr == NULL)
+	if ((cn = (struct sock_conn *)malloc(sizeof(struct sock_conn))) == NULL)
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
+	*conn = cn;
+
+	if (data->addr == NULL)
 		return _vz_error(ctx, VZS_ERR_BAD_PARAM, "address not defined");
 
-	if ((cn->sock = socket(cn->domain, cn->type, 0)) == -1)
+	if ((cn->sock = socket(data->domain, data->type, 0)) == -1)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "socket() : %m");
 
-	if (connect(cn->sock, cn->addr, cn->addr_len) == -1)
+	if (connect(cn->sock, data->addr, data->addr_len) == -1)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "connect() : %m");
 
 	return rc;
 }
 
-static int _vz_sock_close(struct vzsock_ctx *ctx)
+static int close_conn(struct vzsock_ctx *ctx, void *conn)
 {
-	struct sock_conn *cn = (struct sock_conn *)ctx->conn;
+	struct sock_conn *cn = (struct sock_conn *)conn;
 	if (cn->sock == -1)
 		/* already closed */
 		return 0;
@@ -102,24 +142,16 @@ static int _vz_sock_close(struct vzsock_ctx *ctx)
 			break;
 
 	cn->sock = -1;
+	free(conn);
+
 	return 0;
 }
 
-static int _vz_sock_set(struct vzsock_ctx *ctx, int type, void *data)
+static int set_conn(struct vzsock_ctx *ctx, void *conn, 
+		int type, void *data, size_t size)
 {
-	struct sock_conn *cn = (struct sock_conn *)ctx->conn;
+//	struct sock_conn *cn = (struct sock_conn *)conn;
 
-	switch (type) {
-	case VZSOCK_DATA_SOCK:
-	{
-		/* set socket */
-		memcpy(&cn->sock, data, sizeof(int));
-		break;
-	}
-	default:
-		return _vz_error(ctx, VZS_ERR_BAD_PARAM, 
-			"Unknown data type : %d", type);
-	}
 	return 0;
 }
 

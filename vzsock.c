@@ -19,96 +19,158 @@
 #include "ssh.h"
 #include "sock.h"
 
+/* context operations */
 
 int vzsock_init(
 		int type, 
-		struct vzsock *vzs,
+		struct vzsock_ctx *ctx,
 		int (*logger)(int level, const char *fmt, va_list pvar),
 		int (*readpwd)(const char *prompt, char *pass, size_t size))
 {
 	int rc;
 	char path[PATH_MAX];
+	struct vzs_handlers *handlers;
+	struct vzs_string_list *clist;
 
-/* TODO : ident */
-	openlog("VZM", LOG_PERROR, LOG_USER);
-
-	vzs->clean = NULL;
-	vzs->test_conn = NULL;
-	vzs->create_main_conn = NULL;
-	vzs->set = NULL;
-/*
-	vzs->recv_str = NULL;
-	vzs->send = NULL;
-	vzs->close = NULL;
-	vzs->is_connected = NULL;
-*/
+//	openlog("VZM", LOG_PERROR, LOG_USER);
 
 	/* init context */
-	vzs->ctx.conn = NULL;
-	vzs->ctx.debug = 0;
-	vzs->ctx.errcode = 0;
-	vzs->ctx.errmsg[0] = '\0';
-	vzs->ctx.logger = logger;
-	vzs->ctx.readpwd = readpwd;
-	vzs->ctx.password[0] = '\0';
+	if ((handlers = (struct vzs_handlers *)
+			malloc(sizeof(struct vzs_handlers))) == NULL)
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
+	if ((clist = (struct vzs_string_list *)
+			malloc(sizeof(struct vzs_string_list))) == NULL) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
+		goto cleanup_0;
+	}
+	_vzs_string_list_init(clist);
+	ctx->type = type;
+	ctx->handlers = (void *)handlers;
+	ctx->clist = (void *)clist;
+	ctx->debug = 0;
+	ctx->errcode = 0;
+	ctx->errmsg[0] = '\0';
+	ctx->logger = logger;
+	ctx->readpwd = readpwd;
+	ctx->password[0] = '\0';
 
 	/* create temporary directory (mkdtemp() will set perms 0700) */
-	if (_vz_get_tmp_dir(path, sizeof(path)))
-		path[0] = '\0';
-	snprintf(vzs->ctx.tmpdir, 
-		sizeof(vzs->ctx.tmpdir), "%s/vzm.XXXXXX", path);
-	if (mkdtemp(vzs->ctx.tmpdir) == NULL)
-		return _vz_error(&vzs->ctx, VZS_ERR_SYSTEM,
-			"mkdtemp(%s) : %m", vzs->ctx.tmpdir);
+	_vzs_get_tmp_dir(path, sizeof(path));
+	snprintf(ctx->tmpdir, sizeof(ctx->tmpdir), "%s/vzm.XXXXXX", path);
+	if (mkdtemp(ctx->tmpdir) == NULL) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM,
+			"mkdtemp(%s) : %m", ctx->tmpdir);
+		goto cleanup_1;
+	}
 
 	switch (type) {
 	case VZSOCK_SOCK:
-		if ((rc = _vz_sock_init(vzs)))
-			goto cleanup_0;
+		if ((rc = _vzs_sock_init(ctx, handlers)))
+			goto cleanup_2;
 		break;
 	case VZSOCK_SSH:
-		if ((rc = _vz_ssh_init(vzs)))
-			goto cleanup_0;
+		if ((rc = _vzs_ssh_init(ctx, handlers)))
+			goto cleanup_2;
 		break;
 	default:
-		rc = _vz_error(&vzs->ctx, VZS_ERR_BAD_PARAM,
+		rc = _vz_error(ctx, VZS_ERR_BAD_PARAM,
 			"undefined vzsock type: %d", type);
-		goto cleanup_0;
+		goto cleanup_2;
 	}
 
 	return 0;
 
+cleanup_2:
+	_vzs_rmdir(ctx, ctx->tmpdir);
+cleanup_1:
+	free((void *)clist);
 cleanup_0:
-	_vz_rmdir(&vzs->ctx, vzs->ctx.tmpdir);
+	free((void *)handlers);
 
 	return rc;
 }
 
-int vzsock_set(struct vzsock *vzs, int type, void *data)
+int vzsock_open(struct vzsock_ctx *ctx)
 {
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+
+	return handlers->open(ctx);
+}
+
+void vzsock_close(struct vzsock_ctx *ctx)
+{
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+	struct vzs_string_list *clist = (struct vzs_string_list *)ctx->clist;
+	struct vzs_string_list_el *cn;
+
+	/* close all connections */
+	_vzs_string_list_for_each(clist, cn)
+		handlers->close_conn(ctx, cn->s);
+	_vzs_string_list_clean(clist);
+	free(ctx->clist);
+	ctx->clist = NULL;
+
+	handlers->close(ctx);
+
+	free(ctx->handlers);
+	ctx->handlers = NULL;
+
+	_vzs_rmdir(ctx, ctx->tmpdir);
+
+//	closelog();
+}
+
+int vzsock_set(struct vzsock_ctx *ctx, int type, void *data, size_t size)
+{
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
 
 	switch (type) {
 	default:
-		return vzs->set(&vzs->ctx, type, data);
+		return handlers->set(ctx, type, data, size);
 	}
 	return 0;
 }
 
-void vzsock_clean(struct vzsock *vzs)
+/* per-connection functions */
+
+int vzsock_open_conn(struct vzsock_ctx *ctx, char * const args[], void **conn)
 {
-	_vz_rmdir(&vzs->ctx, vzs->ctx.tmpdir);
+	int rc;
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+	struct vzs_string_list *clist = (struct vzs_string_list *)ctx->clist;
 
-	vzs->clean(&vzs->ctx);
-
-	closelog();
+	if ((rc = handlers->open_conn(ctx, args, conn)))
+		return rc;
+	/* and add into list */
+	if (_vzs_string_list_add(clist, *conn))
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
+	return 0;
 }
 
-int vzsock_test_conn(struct vzsock *vzs)
+int vzsock_close_conn(struct vzsock_ctx *ctx, void *conn)
 {
-	return vzs->test_conn(&vzs->ctx);
+	int rc;
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+	struct vzs_string_list *clist = (struct vzs_string_list *)ctx->clist;
+	struct vzs_string_list_el *cn;
+
+	if ((rc = handlers->close_conn(ctx, conn)))
+		return rc;
+
+	/* and remove from list */
+	_vzs_string_list_for_each(clist, cn) {
+		if (cn->s == conn)
+			_vzs_string_list_remove(clist, cn);
+	}
+	return 0;
 }
 
-int vzsock_create_main_conn(struct vzsock *vzs, char * const args[])
+int vzsock_set_conn(struct vzsock_ctx *ctx, void *conn, 
+		int type, void *data, size_t size)
 {
-	return vzs->create_main_conn(&vzs->ctx, args);
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+
+	return handlers->set_conn(ctx, conn, type, data, size);
 }
+
+

@@ -12,11 +12,17 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
-struct sock_conn {
+#include "libvzsock.h"
+#include "vzsock.h"
+
+struct sock_data {
 	int domain;
 	int type;
 	struct sockaddr *addr;
 	socklen_t addr_len;
+};
+
+struct sock_conn {
 	int sock;
 };
 
@@ -24,7 +30,7 @@ struct sock_conn {
 extern "C" {
 #endif 
 
-int _vz_sock_init(struct vzsock *vzs);
+int _vzs_sock_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers);
 
 #ifdef __cplusplus
 }

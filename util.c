@@ -90,7 +90,7 @@ int _vz_error(struct vzsock_ctx *ctx, int errcode, const char * fmt, ...)
 }
 
 /* get temporary directory */
-int _vz_get_tmp_dir(char *path, size_t sz)
+int _vzs_get_tmp_dir(char *path, size_t sz)
 {
 	int i;
 	struct stat st;
@@ -120,7 +120,7 @@ int _vz_get_tmp_dir(char *path, size_t sz)
 }
 
 /* read password from stdin */
-int _vz_read_password(const char *prompt, char *pass, size_t size)
+int _vzs_read_password(const char *prompt, char *pass, size_t size)
 {
 	char ch, *p, *end;
 	struct termios term, oterm;
@@ -152,12 +152,12 @@ int _vz_read_password(const char *prompt, char *pass, size_t size)
  char* double-linked list 
 */
 /* add new element in tail */
-int _vz_string_list_add(struct vz_string_list *ls, const char *str)
+int _vzs_string_list_add(struct vzs_string_list *ls, const char *str)
 {
-	struct vz_string_list_el *p;
+	struct vzs_string_list_el *p;
 
-	p = (struct vz_string_list_el *)
-		malloc(sizeof(struct vz_string_list_el));
+	p = (struct vzs_string_list_el *)
+		malloc(sizeof(struct vzs_string_list_el));
 	if (p == NULL)
 		return VZS_ERR_SYSTEM;
 	if ((p->s = strdup(str)) == NULL)
@@ -168,9 +168,9 @@ int _vz_string_list_add(struct vz_string_list *ls, const char *str)
 }
 
 /* remove all elements and its content */
-void _vz_string_list_clean(struct vz_string_list *ls)
+void _vzs_string_list_clean(struct vzs_string_list *ls)
 {
-	struct vz_string_list_el *el;
+	struct vzs_string_list_el *el;
 
 	while (ls->tqh_first != NULL) {
 		el = ls->tqh_first;
@@ -181,11 +181,11 @@ void _vz_string_list_clean(struct vz_string_list *ls)
 }
 
 /* find string <str> in list <ls> */
-struct vz_string_list_el * _vz_string_list_find(
-		struct vz_string_list *ls, 
+struct vzs_string_list_el * _vzs_string_list_find(
+		struct vzs_string_list *ls, 
 		const char *str)
 {
-	struct vz_string_list_el *p;
+	struct vzs_string_list_el *p;
 
 	if (str == NULL)
 		return NULL;
@@ -198,12 +198,12 @@ struct vz_string_list_el * _vz_string_list_find(
 }
 
 /* remove element and its content and return pointer to previous elem */
-struct vz_string_list_el * _vz_string_list_remove(
-		struct vz_string_list *ls,
-		struct vz_string_list_el *el)
+struct vzs_string_list_el * _vzs_string_list_remove(
+		struct vzs_string_list *ls,
+		struct vzs_string_list_el *el)
 {
 	/* get previous element */
-	struct vz_string_list_el *prev = *el->e.tqe_prev;
+	struct vzs_string_list_el *prev = *el->e.tqe_prev;
 
 	TAILQ_REMOVE(ls, el, e);
 	free((void *)el->s);
@@ -213,9 +213,9 @@ struct vz_string_list_el * _vz_string_list_remove(
 }
 
 /* get size of string list <ls> */
-size_t _vz_string_list_size(struct vz_string_list *ls)
+size_t _vzs_string_list_size(struct vzs_string_list *ls)
 {
-	struct vz_string_list_el *p;
+	struct vzs_string_list_el *p;
 	size_t sz = 0;
 
 	for (p = ls->tqh_first; p != NULL; p = p->e.tqe_next)
@@ -224,13 +224,13 @@ size_t _vz_string_list_size(struct vz_string_list *ls)
 }
 
 /* copy string list <ls> to string array <*a> */
-int _vz_string_list_to_array(struct vz_string_list *ls, char ***a)
+int _vzs_string_list_to_array(struct vzs_string_list *ls, char ***a)
 {
-	struct vz_string_list_el *p;
+	struct vzs_string_list_el *p;
 	size_t sz, i;
 
 	/* get array size */
-	sz = _vz_string_list_size(ls);
+	sz = _vzs_string_list_size(ls);
 	if ((*a = (char **)calloc(sz + 1, sizeof(char *))) == NULL)
 		return VZS_ERR_SYSTEM;
 	for (p = ls->tqh_first, i = 0; p != NULL && i < sz; \
@@ -244,14 +244,14 @@ int _vz_string_list_to_array(struct vz_string_list *ls, char ***a)
 }
 
 /* copy string list <ls> to <buffer> */
-int _vz_string_list_to_buf(
-		struct vz_string_list *ls, 
+int _vzs_string_list_to_buf(
+		struct vzs_string_list *ls, 
 		char *buffer, 
 		size_t size)
 {
-	struct vz_string_list_el *p;
+	struct vzs_string_list_el *p;
 
-	_vz_string_list_for_each(ls, p) {
+	_vzs_string_list_for_each(ls, p) {
 		strncat(buffer, p->s, size-strlen(buffer)-1);
 		strncat(buffer, " ", size-strlen(buffer)-1);
 	}
@@ -259,7 +259,7 @@ int _vz_string_list_to_buf(
 }
 
 /* remove directory with content */
-int _vz_rmdir(struct vzsock_ctx *ctx, const char *dirname)
+int _vzs_rmdir(struct vzsock_ctx *ctx, const char *dirname)
 {
 	char path[PATH_MAX+1];
 	DIR * dir;
@@ -295,7 +295,7 @@ int _vz_rmdir(struct vzsock_ctx *ctx, const char *dirname)
 		}
 
 		if (S_ISDIR(st.st_mode)) {
-			if ((rc = _vz_rmdir(ctx, path)))
+			if ((rc = _vzs_rmdir(ctx, path)))
 				break;
 			continue;
 		}

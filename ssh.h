@@ -9,20 +9,25 @@
 #include <sys/types.h>
 #include <limits.h>
 
+#include "libvzsock.h"
+#include "vzsock.h"
+
+struct ssh_data {
+	char *hostname;
+};
+
 struct ssh_conn {
 	pid_t pid;
 	int in;
 	int out;
 	char askfile[PATH_MAX + 1];
-	char *hostname;
 };
 
 #ifdef __cplusplus
 extern "C" {
 #endif 
 
-int _vz_ssh_init(struct vzsock *vzs);
-int _vz_ssh_set(struct vzsock_ctx *ctx, int type, void *data);
+int _vzs_ssh_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers);
 
 #ifdef __cplusplus
 }
