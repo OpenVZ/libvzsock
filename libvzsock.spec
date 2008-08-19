@@ -4,7 +4,7 @@
 Summary: Virtuozzo transport API library
 Name: libvzsock
 Version: 4.0.0
-Release: 1.swsoft
+Release: 1
 License: Parallels
 Group: System Environment/Libraries
 Source: libvzsock.tar.bz2
