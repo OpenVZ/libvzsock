@@ -101,6 +101,16 @@ int _vzs_rmdir(struct vzsock_ctx *ctx, const char *dirname);
 
 /* Write <size> bytes of <data> in non-blocking descriptor <fd>. */
 int _vzs_writefd(struct vzsock_ctx *ctx, int fd, const char * data, size_t size);
+/* 
+  read from nonblocking descriptor <fd> string, separated by <separator>.
+  will write '\0' on the end of string
+*/
+int _vzs_recv_str(
+		struct vzsock_ctx *ctx, 
+		int fd, 
+		char separator, 
+		char *data, 
+		size_t size);
 
 #ifdef __cplusplus
 }

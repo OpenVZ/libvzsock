@@ -177,4 +177,27 @@ int vzsock_set_conn(struct vzsock_ctx *ctx, void *conn,
 	return handlers->set_conn(ctx, conn, type, data, size);
 }
 
+int vzsock_send(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * data, 
+		size_t size)
+{
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+
+	return handlers->send(ctx, conn, data, size);
+}
+
+int vzsock_recv_str(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		char separator, 
+		char *data, 
+		size_t size)
+{
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+
+	return handlers->recv_str(ctx, conn, separator, data, size);
+}
+
 

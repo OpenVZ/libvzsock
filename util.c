@@ -379,4 +379,66 @@ int _vzs_writefd(struct vzsock_ctx *ctx, int fd, const char * data, size_t size)
 	return VZS_ERR_CONN_BROKEN;
 }
 
+/* 
+  read from nonblocking descriptor <fd> string, separated by <separator>.
+  will write '\0' on the end of string
+*/
+int _vzs_recv_str(
+		struct vzsock_ctx *ctx, 
+		int fd, 
+		char separator, 
+		char *data, 
+		size_t size)
+{
+	int rc;
+	char * p;
+	fd_set fds;
+	struct timeval tv;
+
+	p = data;
+	*p = '\0';
+	while (1) {
+		/* read data */
+		while (1) {
+			errno = 0;
+			rc = read(fd, p, 1);
+			if (rc > 0) {
+				if (*p == separator) {
+					*p = '\0';
+					return 0;
+				}
+				p++;
+				if (p >= data + size)
+					return VZS_ERR_TOOLONG;
+				continue;
+			} else if (rc == 0) {
+				/* end of file */
+				*p = '\0';
+				return 0;
+			}
+			if (errno == EAGAIN)
+				/* wait next data */
+				break;
+			else
+				return VZS_ERR_CONN_BROKEN;
+		}
+
+		/* wait next data in socket */
+		do {
+			FD_ZERO(&fds);
+			FD_SET(fd, &fds);
+			tv.tv_sec = ctx->tmo;
+			tv.tv_usec = 0;
+			rc = select(fd + 1, &fds, NULL, NULL, &tv);
+			if (rc == 0)
+				return VZS_ERR_TIMEOUT;
+			else if (rc <= 0)
+				return VZS_ERR_CONN_BROKEN;
+		} while (!FD_ISSET(fd, &fds));
+	}
+
+	/* but we never should be here */
+	return VZS_ERR_CONN_BROKEN;
+}
+
 

@@ -25,13 +25,18 @@ struct vzs_handlers {
 	int (*set_conn)(struct vzsock_ctx *ctx, void *conn, 
 			int type, void *data, size_t size);
 	int (*send)(
-		struct vzsock_ctx *ctx, 
-		void *conn, 
-		const char * data, 
-		size_t size);
+			struct vzsock_ctx *ctx, 
+			void *conn, 
+			const char * data, 
+			size_t size);
+	int (*recv_str)(
+			struct vzsock_ctx *ctx, 
+			void *conn, 
+			char separator, 
+			char *data, 
+			size_t size);
+
 /*
-        int (*recv_str)(void *conn,
-                char separator, char *data, size_t size);
         int (*is_connected)(void *conn);
 */
 };

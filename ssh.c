@@ -38,6 +38,12 @@ static int send(
 		void *conn, 
 		const char * data, 
 		size_t size);
+static int recv_str(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		char separator, 
+		char *data, 
+		size_t size);
 
 
 int _vzs_ssh_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
@@ -58,6 +64,7 @@ int _vzs_ssh_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->close_conn = close_conn;
 	handlers->set_conn = set_conn;
 	handlers->send = send;
+	handlers->recv_str = recv_str;
 
 	return 0;
 }
@@ -488,3 +495,20 @@ static int send(
 
 	return _vzs_writefd(ctx, cn->out, data, size);
 }
+
+/* 
+  read from nonblocking descriptor <fd> string, separated by <separator>.
+  will write '\0' on the end of string
+*/
+static int recv_str(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		char separator, 
+		char *data, 
+		size_t size)
+{
+	struct ssh_conn *cn = (struct ssh_conn *)conn;
+
+	return _vzs_recv_str(ctx, cn->in, separator, data, size);
+}
+

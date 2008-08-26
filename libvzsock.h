@@ -53,7 +53,7 @@ struct vzsock_ctx {
 #define VZS_ERR_BAD_PARAM	3
 #define VZS_ERR_TIMEOUT		4
 #define VZS_ERR_CONN_BROKEN	5
-
+#define VZS_ERR_TOOLONG		6
 #ifdef __cplusplus
 extern "C" {
 #endif 
@@ -72,7 +72,18 @@ int vzsock_create_conn(struct vzsock_ctx *ctx,
 int vzsock_close_conn(struct vzsock_ctx *ctx, void *conn);
 int vzsock_set_conn(struct vzsock_ctx *ctx, void *conn, 
 		int type, void *data, size_t size);
-
+int vzsock_send(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * data, 
+		size_t size);
+/* read string, separated by <separator>. Will write '\0' on end of string */
+int vzsock_recv_str(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		char separator, 
+		char *data, 
+		size_t size);
 #ifdef __cplusplus
 }
 #endif 
