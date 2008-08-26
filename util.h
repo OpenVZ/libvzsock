@@ -1,6 +1,6 @@
 /* $Id: util.h,v 1.21 2008/06/26 14:40:12 krasnov Exp $
  *
- * Copyright (c) SWsoft, 2006-2007
+ * Copyright (C) 2008, Parallels, Inc. All rights reserved.
  *
  * Double-linked lists functions declarations
  */
@@ -98,6 +98,9 @@ int _vzs_string_list_to_buf(
 
 /* remove directory with content */
 int _vzs_rmdir(struct vzsock_ctx *ctx, const char *dirname);
+
+/* Write <size> bytes of <data> in non-blocking descriptor <fd>. */
+int _vzs_writefd(struct vzsock_ctx *ctx, int fd, const char * data, size_t size);
 
 #ifdef __cplusplus
 }

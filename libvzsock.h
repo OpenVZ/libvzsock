@@ -1,6 +1,6 @@
 /* $Id: util.h,v 1.21 2008/06/26 14:40:12 krasnov Exp $
  *
- * Copyright (c) Parallels, 2008
+ * Copyright (C) 2008, Parallels, Inc. All rights reserved.
  *
  */
 
@@ -17,6 +17,9 @@
 #define VZSOCK_SSH	2
 #define VZSOCK_SSL	3
 
+/* default timeout */
+#define VZSOCK_DEF_TMO 3600
+
 struct vzsock_ctx {
 	int type;
 	/* handlers for this vzsock type */
@@ -32,6 +35,7 @@ struct vzsock_ctx {
 	int (*readpwd)(const char *prompt, char *pass, size_t size);
 	char tmpdir[PATH_MAX+1];
 	char password[BUFSIZ];
+	long tmo;
 };
 
 /* data types (vzsock_set() function) */
@@ -40,12 +44,15 @@ struct vzsock_ctx {
 #define VZSOCK_DATA_FDPAIR	3 /* pair of file descriptors */
 #define VZSOCK_DATA_SOCK_DOMAIN	4 /* socket domain */
 #define VZSOCK_DATA_SOCK_TYPE	5 /* socket type */
+#define VZSOCK_DATA_TMO	6 /* connection timeout */
 
 
 /* errors code */
 #define VZS_ERR_SYSTEM		1
 #define VZS_ERR_CANT_CONNECT	2
 #define VZS_ERR_BAD_PARAM	3
+#define VZS_ERR_TIMEOUT		4
+#define VZS_ERR_CONN_BROKEN	5
 
 #ifdef __cplusplus
 extern "C" {

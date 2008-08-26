@@ -26,6 +26,11 @@ static int open_conn(struct vzsock_ctx *ctx, char * const args[], void **conn);
 static int close_conn(struct vzsock_ctx *ctx, void *conn);
 static int set_conn(struct vzsock_ctx *ctx, void *conn, 
 		int type, void *data, size_t size);
+static int _send(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * data, 
+		size_t size);
 
 
 int _vzs_sock_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
@@ -49,6 +54,7 @@ int _vzs_sock_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->open_conn = open_conn;
 	handlers->close_conn = close_conn;
 	handlers->set_conn = set_conn;
+	handlers->send = _send;
 
 	return 0;
 }
@@ -155,3 +161,13 @@ static int set_conn(struct vzsock_ctx *ctx, void *conn,
 	return 0;
 }
 
+static int _send(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * data, 
+		size_t size)
+{
+	struct sock_conn *cn = (struct sock_conn *)conn;
+
+	return _vzs_writefd(ctx, cn->sock, data, size);
+}

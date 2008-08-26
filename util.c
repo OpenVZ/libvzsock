@@ -51,10 +51,19 @@ int __vz_set_cloexec(int fd, int state)
 	return 0;
 }
 
-static int _vz_def_logger(int level, const char* fmt, va_list pvar)
+static int __vz_def_logger(int level, const char* fmt, va_list pvar)
 {
 	/* put to syslog and to some output also */
 	vsyslog(level, fmt, pvar);
+	return 0;
+}
+
+static int _vz_def_logger(int level, const char *fmt, ...)
+{
+	va_list pvar;
+	va_start(pvar, fmt);
+	__vz_def_logger(level, fmt, pvar);
+	va_end(pvar);
 	return 0;
 }
 
@@ -66,7 +75,7 @@ int _vz_logger(struct vzsock_ctx *ctx, int level, const char *fmt, ...)
 	if (ctx->logger)
 		ctx->logger(level, fmt, pvar);
 	else
-		_vz_def_logger(level, fmt, pvar);
+		__vz_def_logger(level, fmt, pvar);
 	va_end(pvar);
 	return 0;
 }
@@ -83,7 +92,7 @@ int _vz_error(struct vzsock_ctx *ctx, int errcode, const char * fmt, ...)
 	if (ctx->logger)
 		ctx->logger(LOG_ERR, fmt, ap);
 	else
-		_vz_def_logger(LOG_ERR, fmt, ap);
+		__vz_def_logger(LOG_ERR, fmt, ap);
 	va_end(pvar);
 	va_end(ap);
 	return errcode;
@@ -318,4 +327,56 @@ int _vzs_rmdir(struct vzsock_ctx *ctx, const char *dirname)
 
 	return 0;
 }
+
+/* Write <size> bytes of <data> in non-blocking descriptor <fd>.
+   We can't use _vz_error()/_vz_logger() in this function because on server side 
+   _vz_error() can call this function to send error message to client side. */ 
+int _vzs_writefd(struct vzsock_ctx *ctx, int fd, const char * data, size_t size)
+{
+	int rc;
+	size_t sent;
+	fd_set fds;
+	struct timeval tv;
+
+	if (size == 0)
+		return 0;
+	sent = 0;
+	while (1) {
+		while (1) {
+			rc = write(fd, data + sent, (size_t)(size - sent));
+			if (rc > 0) {
+				sent += rc;
+				if (sent >= size)
+					return 0;
+				continue;
+			}
+			if (errno == EAGAIN) {
+				break;
+			} else {
+				_vz_def_logger(LOG_ERR, "write() : %m");
+				return VZS_ERR_CONN_BROKEN;
+			}
+		}
+
+		/* wait next data in socket */
+		do {
+			FD_ZERO(&fds);
+			FD_SET(fd, &fds);
+			tv.tv_sec = ctx->tmo;
+			tv.tv_usec = 0;
+			rc = select(fd + 1, NULL, &fds, NULL, &tv);
+			if (rc == 0) {
+				_vz_def_logger(LOG_ERR, "timeout expired (%d sec)", ctx->tmo);
+				return VZS_ERR_TIMEOUT;
+			} else if (rc <= 0) {
+				_vz_def_logger(LOG_ERR, "select() : %m");
+				return VZS_ERR_SYSTEM;
+			}
+		} while (!FD_ISSET(fd, &fds));
+	}
+
+	/* but we never should be here */
+	return VZS_ERR_CONN_BROKEN;
+}
+
 

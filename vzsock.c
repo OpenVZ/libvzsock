@@ -53,7 +53,8 @@ int vzsock_init(
 	ctx->logger = logger;
 	ctx->readpwd = readpwd;
 	ctx->password[0] = '\0';
-
+	ctx->tmo = VZSOCK_DEF_TMO;
+ 
 	/* create temporary directory (mkdtemp() will set perms 0700) */
 	_vzs_get_tmp_dir(path, sizeof(path));
 	snprintf(ctx->tmpdir, sizeof(ctx->tmpdir), "%s/vzm.XXXXXX", path);
@@ -125,6 +126,9 @@ int vzsock_set(struct vzsock_ctx *ctx, int type, void *data, size_t size)
 	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
 
 	switch (type) {
+	case VZSOCK_DATA_TMO:
+		ctx->tmo = *((long *)data);
+		break;
 	default:
 		return handlers->set(ctx, type, data, size);
 	}
