@@ -441,4 +441,22 @@ int _vzs_recv_str(
 	return VZS_ERR_CONN_BROKEN;
 }
 
+int _vzs_check_exit_status(struct vzsock_ctx *ctx, char *task, int status)
+{
+	int rc;
+
+	if (WIFEXITED(status)) {
+		if ((rc = WEXITSTATUS(status)))
+			return _vz_error(ctx, VZS_ERR_SYSTEM, 
+				"%s exited with code %d", task, rc);
+	} else if (WIFSIGNALED(status)) {
+		return _vz_error(ctx, VZS_ERR_SYSTEM, 
+			"%s got signal %d", task, WTERMSIG(status));
+	} else {
+		return _vz_error(ctx, VZS_ERR_SYSTEM, 
+			"%s exited with status %d", task, status);
+	}
+	return 0;
+}
+
 

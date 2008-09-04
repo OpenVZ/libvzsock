@@ -3,6 +3,7 @@
  * Copyright (c) SWsoft, 2006-2007
  *
  */
+#include <linux/limits.h>
 #include <limits.h>
 #include <sys/wait.h>
 #include <sys/types.h>
@@ -14,6 +15,7 @@
 #include <string.h>
 #include <sys/syslog.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "libvzsock.h"
 #include "vzsock.h"
@@ -44,6 +46,16 @@ static int recv_str(
 		char separator, 
 		char *data, 
 		size_t size);
+static int rcopy(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * remote_cmd,
+		char * const *task_argv);
+static int wait_rcopy(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char *target_path,
+		char * const *argv);
 
 
 int _vzs_ssh_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
@@ -65,6 +77,8 @@ int _vzs_ssh_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->set_conn = set_conn;
 	handlers->send = send;
 	handlers->recv_str = recv_str;
+	handlers->send_data = rcopy;
+	handlers->recv_data = wait_rcopy;
 
 	return 0;
 }
@@ -168,23 +182,25 @@ static int test_conn(struct vzsock_ctx *ctx)
 	char script[PATH_MAX + 1];
 	int td, sd;
 	FILE *fp;
-	struct vzs_string_list argl;
-	char **argv;
+	struct vzs_string_list ssh_argl;
+	char **ssh_argv;
 	int i;
 	struct ssh_data *data = (struct ssh_data *)ctx->data;
 
-	_vzs_string_list_init(&argl);
-	if ((rc = get_args(ctx, &argl)))
+	if (data->hostname == NULL)
+		return _vz_error(ctx, VZS_ERR_BAD_PARAM, "hostname does not specified");
+	_vzs_string_list_init(&ssh_argl);
+	if ((rc = get_args(ctx, &ssh_argl)))
 		return rc;
-	if (_vzs_string_list_add(&argl, data->hostname)) {
+	if (_vzs_string_list_add(&ssh_argl, data->hostname)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
 		goto cleanup_0;
 	}
-	if (_vzs_string_list_add(&argl, "true")) {
+	if (_vzs_string_list_add(&ssh_argl, "true")) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
 		goto cleanup_0;
 	}
-	if (_vzs_string_list_to_array(&argl, &argv)) {
+	if (_vzs_string_list_to_array(&ssh_argl, &ssh_argv)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
 		goto cleanup_0;
 	}
@@ -192,7 +208,7 @@ static int test_conn(struct vzsock_ctx *ctx)
 	if (ctx->debug) {
 		char buffer[BUFSIZ+1];
 		buffer[0] = '\0';
-		_vzs_string_list_to_buf(&argl, buffer, sizeof(buffer));
+		_vzs_string_list_to_buf(&ssh_argl, buffer, sizeof(buffer));
 		_vz_logger(ctx, LOG_DEBUG, 
 			"establish test ssh channel: %s", buffer);
 	}
@@ -235,7 +251,7 @@ static int test_conn(struct vzsock_ctx *ctx)
 		setenv("DISPLAY", "dummy", 0);
 		setenv("SSH_ASKPASS", script, 1);
 		setsid();
-		execvp(argv[0], (char *const *)argv);
+		execvp(ssh_argv[0], (char *const *)ssh_argv);
 		exit(VZS_ERR_SYSTEM);
 	}
 	
@@ -279,7 +295,7 @@ static int test_conn(struct vzsock_ctx *ctx)
 
 	} else {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "%s exited with status %d",
-				argv[0], status);
+				ssh_argv[0], status);
 		goto cleanup_3;
 	}
 
@@ -289,11 +305,11 @@ cleanup_2:
 	close(td);
 	unlink(tmpfile);
 cleanup_1:
-	for (i = 0; argv[i]; i++)
-		free((void *)argv[i]);
-	free((void *)argv);
+	for (i = 0; ssh_argv[i]; i++)
+		free((void *)ssh_argv[i]);
+	free((void *)ssh_argv);
 cleanup_0:
-	_vzs_string_list_clean(&argl);
+	_vzs_string_list_clean(&ssh_argl);
 
 	return rc;
 }
@@ -301,7 +317,6 @@ cleanup_0:
 /* create ASKPASS file for ssh */
 static int generate_askpass(
 		struct vzsock_ctx *ctx, 
-		const char *pass, 
 		char *path, 
 		size_t size)
 {
@@ -310,10 +325,10 @@ static int generate_askpass(
 	const char *p;
 
 	path[0] = '\0';
-	if (pass == NULL)
+	if (ctx->password == NULL)
 		return 0;
 
-	if (strlen(pass) == 0)
+	if (strlen(ctx->password) == 0)
 		return 0;
 
 	snprintf(path, size, "%s/askpass.XXXXXX", ctx->tmpdir);
@@ -327,7 +342,7 @@ static int generate_askpass(
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "fdopen(%s) : %m", path);
 	}
 	fprintf(fp, "#!/bin/sh\necho \"");
-	for (p = pass; *p; p++) {
+	for (p = ctx->password; *p; p++) {
 		if (strchr("\\\"$`", *p))
 			fputc('\\', fp);
 		fputc(*p, fp);
@@ -347,8 +362,8 @@ static int open_conn(struct vzsock_ctx *ctx, char * const args[], void **conn)
 	int in[2], out[2];
 	int status;
 	struct ssh_conn *cn;
-	struct vzs_string_list argl;
-	char **argv;
+	struct vzs_string_list ssh_argl;
+	char **ssh_argv;
 	int i;
 	struct ssh_data *data = (struct ssh_data *)ctx->data;
 
@@ -360,21 +375,21 @@ static int open_conn(struct vzsock_ctx *ctx, char * const args[], void **conn)
 	cn->pid = 0;
 	*conn = cn;
 
-	_vzs_string_list_init(&argl);
-	if ((rc = get_args(ctx, &argl)))
+	_vzs_string_list_init(&ssh_argl);
+	if ((rc = get_args(ctx, &ssh_argl)))
 		return rc;
-	if (_vzs_string_list_add(&argl, data->hostname)) {
+	if (_vzs_string_list_add(&ssh_argl, data->hostname)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
 		goto cleanup_0;
 	}
 	for (i = 0; args[i]; i++) {
-		if (_vzs_string_list_add(&argl, args[i])) {
+		if (_vzs_string_list_add(&ssh_argl, args[i])) {
 			rc = _vz_error(ctx, 
 				VZS_ERR_SYSTEM, "memory alloc : %m");
 			goto cleanup_0;
 		}
 	}
-	if (_vzs_string_list_to_array(&argl, &argv)) {
+	if (_vzs_string_list_to_array(&ssh_argl, &ssh_argv)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
 		goto cleanup_0;
 	}
@@ -382,14 +397,13 @@ static int open_conn(struct vzsock_ctx *ctx, char * const args[], void **conn)
 	if (ctx->debug) {
 		char buffer[BUFSIZ+1];
 		buffer[0] = '\0';
-		_vzs_string_list_to_buf(&argl, buffer, sizeof(buffer));
+		_vzs_string_list_to_buf(&ssh_argl, buffer, sizeof(buffer));
 		_vz_logger(ctx, LOG_DEBUG, 
 			"establish test ssh channel: %s", buffer);
 	}
 
 	/* if password is needs, create askpass file */
-	if ((rc = generate_askpass(ctx, ctx->password, 
-			cn->askfile, sizeof(cn->askfile))))
+	if ((rc = generate_askpass(ctx, cn->askfile, sizeof(cn->askfile))))
 		goto cleanup_1;
 
 	if ((pipe(in) < 0) || (pipe(out) < 0)) {
@@ -401,6 +415,16 @@ static int open_conn(struct vzsock_ctx *ctx, char * const args[], void **conn)
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
 		goto cleanup_4;
 	} else if (ssh_pid == 0) {
+/*
+		struct rlimit flim;
+		unsigned int fdmax, fd;
+		if (getrlimit(RLIMIT_NOFILE, &flim) == -1)
+			fdmax = OPEN_MAX;
+		else
+			fdmax = flim.rlim_max;
+		for(fd = STDERR_FILENO+1; fd < fdmax; fd++)
+			close(fd);
+*/
 		/* redirect stdout to out and stdin to in */
 		close(in[1]); close(out[0]);
 		dup2(in[0], STDIN_FILENO);
@@ -415,7 +439,7 @@ static int open_conn(struct vzsock_ctx *ctx, char * const args[], void **conn)
 		_vz_set_block(STDIN_FILENO);
 		_vz_set_nonblock(STDERR_FILENO);
 		setsid();
-		execvp(argv[0], argv);
+		execvp(ssh_argv[0], ssh_argv);
 		exit(VZS_ERR_SYSTEM);
 	}
 	close(in[0]); close(out[1]);
@@ -440,11 +464,11 @@ cleanup_2:
 	if (strlen(cn->askfile))
 		unlink(cn->askfile);
 cleanup_1:
-	for (i = 0; argv[i]; i++)
-		free((void *)argv[i]);
-	free((void *)argv);
+	for (i = 0; ssh_argv[i]; i++)
+		free((void *)ssh_argv[i]);
+	free((void *)ssh_argv);
 cleanup_0:
-	_vzs_string_list_clean(&argl);
+	_vzs_string_list_clean(&ssh_argl);
 
 	return rc;
 }
@@ -453,12 +477,11 @@ static int close_conn(struct vzsock_ctx *ctx, void *conn)
 {
 	struct ssh_conn *cn = (struct ssh_conn *)conn;
 
-	if (cn->pid == 0)
-		return 0;
+	if (cn->pid != 0) {
 /* TODO: check retcode and SIGKILL ? */
-	kill(cn->pid, SIGTERM);
-	cn->pid = 0;
-	free(conn);
+		kill(cn->pid, SIGTERM);
+		cn->pid = 0;
+	}
 
 	return 0;
 }
@@ -512,3 +535,266 @@ static int recv_str(
 	return _vzs_recv_str(ctx, cn->in, separator, data, size);
 }
 
+/* File/directory copy
+   we cannot use existing connection (tar server will wait stdin closing)
+   all operations will complete from client side
+   server part can not wait infinitely
+   we can not define any timeout value for server part
+   Client:
+   - create new ssh connection with server and run ssh on dst
+   - 
+   - on dst side server should wait tar
+  save tar pid on file
+
+
+   - run ssh with tar on src
+   - wait tar exiting on dst */
+
+#define PID_FILE                    "vzsock_ssh_pid"
+static int wait_rcopy(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char *target_path,
+		char * const *argv)
+{
+	int rc;
+	char path[PATH_MAX+1];
+	char buf[100];
+	pid_t pid = 0;
+	FILE *fp;
+	time_t tstart;
+	int code;
+
+	snprintf(path, sizeof(path), "%s/" PID_FILE, target_path);
+	if (access(target_path, F_OK)) {
+		return _vz_error(ctx, VZS_ERR_SYSTEM, 
+			"Target directory %s does not exist", target_path);
+	}
+
+	/* return basedir for path */
+	if ((rc = send(ctx, conn, target_path, strlen(target_path) + 1)))
+		return rc;
+
+	/* and wait reply */
+	if ((rc = vzsock_read_srv_reply(ctx, conn, &code, NULL, 0)))
+		return rc;
+	if (code)
+		return code;
+	
+	tstart = time(NULL);
+	while (access(path, R_OK)) {
+		if (tstart + ctx->tmo < time(NULL))
+			/* it is not a bug - 
+			   do not wait ssh and continue */
+			return 0;
+		sleep(1);
+	}
+	if ((fp = fopen(path, "r")) != NULL) {
+		if (fgets(buf, sizeof(buf), fp) != NULL) {
+			pid = atol(buf);
+		}
+		fclose(fp);
+	}
+	unlink(path);
+	if (pid <= 0)
+		return 0;
+	/* and wait */
+	_vz_logger(ctx, LOG_DEBUG, "wait 'ssh ... tar ...' with pid %d", pid);
+	while (kill(pid, 0) == 0)
+		sleep(1);
+	_vz_logger(ctx, LOG_DEBUG, "continue ... %s", strerror(errno));
+	return 0;
+}
+
+/* copy <dir> to remote host by tar via ssh */
+/* use control connection to info exchange
+   run local task, create new ssh connection to server with remote task, 
+   redirect stdin and stdout of local task to ssh channel
+*/
+static int rcopy(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * remote_cmd,
+		char * const *task_argv)
+{
+	int rc = 0;
+	pid_t ssh_pid = -1, task_pid = -1, pid;
+	int status;
+	char askpath[PATH_MAX];
+	int in[2], out[2];
+	struct vzs_string_list ssh_argl;
+	char **ssh_argv;
+	struct ssh_data *data = (struct ssh_data *)ctx->data;
+	int i;
+	char buffer[BUFSIZ+1];
+
+	_vzs_string_list_init(&ssh_argl);
+
+	/* if password is needs, create askpass file */
+	if ((rc = generate_askpass(ctx, askpath, sizeof(askpath))))
+		return rc;
+
+	if ((pipe(in) < 0) || (pipe(out) < 0)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "pipe() error, %m");
+		goto cleanup_0;
+	}
+	_vz_set_nonblock(out[0]);
+
+#if 0
+	/* send command to dst */
+	if ((rc = send(ctx, conn, cmd, strlen(cmd) + 1)))
+		goto cleanup_2;
+
+	/* and wait reply with target dir */
+	if ((rc = vzsock_read_srv_reply(ctx, conn, &retcode, reply, sizeof(reply))))
+		goto cleanup_2;
+	snprintf(buffer, sizeof(buffer),
+		"echo $$ > %s/" PID_FILE "; tar -p -S --same-owner -x -C %s",
+		reply, reply);
+#endif
+
+	if ((rc = get_args(ctx, &ssh_argl))) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
+		goto cleanup_1;
+	}
+	if (_vzs_string_list_add(&ssh_argl, data->hostname)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
+		goto cleanup_1;
+	}
+	if (_vzs_string_list_add(&ssh_argl, remote_cmd)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
+		goto cleanup_1;
+	}
+	if (_vzs_string_list_to_array(&ssh_argl, &ssh_argv)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
+		goto cleanup_1;
+	}
+
+	if (ctx->debug) {
+		buffer[0] = '\0';
+		_vzs_string_list_to_buf(&ssh_argl, buffer, sizeof(buffer));
+		_vz_logger(ctx, LOG_DEBUG, 
+			"establish ssh channel: %s", buffer);
+	}
+
+	ssh_pid = fork();
+	if (ssh_pid < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
+		goto cleanup_2;
+	} else if (ssh_pid == 0) {
+		int fd;
+		/* allow C-c for child */
+		signal(SIGINT, SIG_DFL);
+		/* redirect stdout to out and stdin to in */
+		close(STDIN_FILENO); close(STDOUT_FILENO);
+		close(in[1]); close(out[0]);
+		dup2(in[0], STDIN_FILENO);
+		dup2(out[1], STDOUT_FILENO);
+		if ((fd = open("/dev/null", O_WRONLY)) != -1) {
+			close(STDERR_FILENO);
+			dup2(fd, STDERR_FILENO);
+		}
+		close(in[0]); close(out[1]);
+		if (strlen(askpath)) {
+			setenv("DISPLAY", "dummy", 0);
+			setenv("SSH_ASKPASS", askpath, 1);
+		}
+		setsid();
+		execvp(ssh_argv[0], (char *const *)ssh_argv);
+		exit(VZS_ERR_SYSTEM);
+	}
+	close(in[0]); close(out[1]);
+	while ((pid = waitpid(ssh_pid, &status, WNOHANG)) == -1)
+		if (errno != EINTR)
+			break;
+
+	if (pid < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "waitpid() error: %m");
+		goto cleanup_3;
+	}
+
+	if (ctx->debug) {
+		buffer[0] = '\0';
+		for (i = 0; task_argv[i]; i++) {
+			strncat(buffer, task_argv[i], sizeof(buffer)-strlen(buffer)-1);
+			strncat(buffer, " ", sizeof(buffer)-strlen(buffer)-1);
+		}
+		_vz_logger(ctx, LOG_DEBUG, "run local task: %s", buffer);
+	}
+
+	task_pid = fork();
+	if (task_pid < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
+		goto cleanup_3;
+	} else if (task_pid == 0) {
+		int fd;
+		/* allow C-c for child */
+		signal(SIGINT, SIG_DFL);
+		/* redirect stdout to out and stdin to in */
+		close(STDOUT_FILENO); close(STDIN_FILENO);
+		dup2(in[1], STDOUT_FILENO);
+		dup2(out[0], STDIN_FILENO);
+		if ((fd = open("/dev/null", O_WRONLY)) != -1) {
+			close(STDERR_FILENO);
+			dup2(fd, STDERR_FILENO);
+		}
+		close(in[1]); close(out[0]);
+		execvp(task_argv[0], (char *const *)task_argv);
+		exit(VZS_ERR_SYSTEM);
+	}
+	close(in[1]); close(out[0]);
+
+	if ((rc = send(ctx, conn, "ssh_started", strlen("ssh_started") + 1)))
+		goto cleanup_4;
+
+	rc = 0;
+	while (1) {
+		while ((pid = waitpid(-1, &status, 0)) == -1)
+			if (errno != EINTR)
+				break;
+		if (pid < 0) {
+			rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
+			goto cleanup_4;
+		}
+
+		if (pid == ssh_pid) {
+			ssh_pid = -1;
+			if ((rc = _vzs_check_exit_status(ctx, (char *)ssh_argv[0], status))) {
+				/* remote task failed or signaled, send SIGTERM to 
+				local task and exit immediately */
+				goto cleanup_4;
+			}
+			if (task_pid == -1)
+				break;
+		} else if (pid == task_pid) {
+			task_pid = -1;
+			if ((rc = _vzs_check_exit_status(ctx, (char *)task_argv[0], status))) {
+				/* local task failed or signaled, send SIGTERM to 
+				remote task and exit immediately */
+				goto cleanup_4;
+			}
+			if (ssh_pid == -1)
+				break;
+		}
+	}
+cleanup_4:
+	if (task_pid >= 0)
+		kill(task_pid, SIGTERM);
+cleanup_3:
+	if (ssh_pid >= 0)
+		kill(ssh_pid, SIGTERM);
+cleanup_2:
+	for (i = 0; ssh_argv[i]; i++)
+		free((void *)ssh_argv[i]);
+	free((void *)ssh_argv);
+cleanup_1:
+	close(in[0]); close(out[1]);
+	close(in[1]); close(out[0]);
+cleanup_0:
+	if (strlen(askpath))
+		unlink(askpath);
+
+	_vzs_string_list_clean(&ssh_argl);
+
+	return rc;
+}

@@ -16,6 +16,7 @@
 #define VZSOCK_SOCK	1 /* plain socket */
 #define VZSOCK_SSH	2
 #define VZSOCK_SSL	3
+#define VZSOCK_FD	4
 
 /* default timeout */
 #define VZSOCK_DEF_TMO 3600
@@ -45,6 +46,7 @@ struct vzsock_ctx {
 #define VZSOCK_DATA_SOCK_DOMAIN	4 /* socket domain */
 #define VZSOCK_DATA_SOCK_TYPE	5 /* socket type */
 #define VZSOCK_DATA_TMO	6 /* connection timeout */
+#define VZSOCK_DATA_DEBUG	7 /* debug level */
 
 
 /* errors code */
@@ -84,6 +86,30 @@ int vzsock_recv_str(
 		char separator, 
 		char *data, 
 		size_t size);
+/* 
+ To read reply from server(destination) side as |errcode|:replymessage
+ NOTE: use only on client(source) side
+ NOTE: you also can send debug/info/warning messages from destination node
+*/
+int vzsock_read_srv_reply(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		int *code, 
+		char *reply, 
+		size_t size);
+
+/*  */
+int vzsock_send_data(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * remote_cmd,
+		char * const *argv);
+int vzsock_recv_data(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char *path,
+		char * const *argv);
+
 #ifdef __cplusplus
 }
 #endif 

@@ -18,6 +18,7 @@
 #include "util.h"
 #include "ssh.h"
 #include "sock.h"
+#include "fd.h"
 
 /* context operations */
 
@@ -71,6 +72,10 @@ int vzsock_init(
 		break;
 	case VZSOCK_SSH:
 		if ((rc = _vzs_ssh_init(ctx, handlers)))
+			goto cleanup_2;
+		break;
+	case VZSOCK_FD:
+		if ((rc = _vzs_fd_init(ctx, handlers)))
 			goto cleanup_2;
 		break;
 	default:
@@ -129,7 +134,10 @@ int vzsock_set(struct vzsock_ctx *ctx, int type, void *data, size_t size)
 	case VZSOCK_DATA_TMO:
 		ctx->tmo = *((long *)data);
 		break;
-	default:
+	case VZSOCK_DATA_DEBUG:
+		ctx->debug = *((int *)data);
+		break;
+		default:
 		return handlers->set(ctx, type, data, size);
 	}
 	return 0;
@@ -137,7 +145,7 @@ int vzsock_set(struct vzsock_ctx *ctx, int type, void *data, size_t size)
 
 /* per-connection functions */
 
-int vzsock_open_conn(struct vzsock_ctx *ctx, char * const args[], void **conn)
+int vzsock_create_conn(struct vzsock_ctx *ctx, char * const args[], void **conn)
 {
 	int rc;
 	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
@@ -198,6 +206,78 @@ int vzsock_recv_str(
 	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
 
 	return handlers->recv_str(ctx, conn, separator, data, size);
+}
+
+#define VZS_ERR_DEBUG_OUT	1
+/*
+ Message format : |code|:message
+ code > 0 - debug message
+ code == 0 - info
+ code < 0 - error
+ Server can send debug message, client will show his message
+ 
+ To read reply from server(destination) side as |errcode|:replymessage
+ NOTE: use only on client(source) side
+ NOTE: you also can send debug/info/warning messages from destination node
+*/
+int vzsock_read_srv_reply(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		int *code, 
+		char *reply, 
+		size_t size)
+{
+	char buffer[BUFSIZ+1];
+	int rc;
+	char *p;
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+
+	/* read/and log debug/info/.. messages until get reply */
+	*code = 0;
+	while (1) {
+		if ((rc = handlers->recv_str(ctx, conn, '\0', buffer, sizeof(buffer))))
+			return rc;
+
+		p = buffer;
+		if (*p != '|')
+			break;
+		for (p++; *p && *p != '|'; p++) ;
+		if (*p != '|')
+			break;
+		*(p++) = '\0';
+		*code = strtol(buffer+1, NULL, 10);
+		if (*code < VZS_ERR_DEBUG_OUT)
+			break;
+
+		/* it's a debug message : print and wait reply again
+		   To print this message only on debug level (#93813) */
+		_vz_logger(ctx, LOG_DEBUG, "%s", p);
+	}
+	if (reply)
+		strncpy(reply, p, size);
+	return 0;
+}
+
+int vzsock_send_data(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * remote_cmd,
+		char * const *argv)
+{
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+
+	return handlers->send_data(ctx, conn, remote_cmd, argv);
+}
+
+int vzsock_recv_data(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char *path,
+		char * const *argv)
+{
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+
+	return handlers->recv_data(ctx, conn, path, argv);
 }
 
 

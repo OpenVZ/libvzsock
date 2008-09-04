@@ -2,7 +2,8 @@ ARCH=$(shell uname -i)
 
 CC = gcc
 
-CFLAGS = -g -Wall -fPIC -O2 -D_REENTRANT
+CFLAGS = -g -Wall -fPIC -O0
+# -O2 -D_REENTRANT
 LDFLAGS += -L . -L /usr/kerberos/lib/
 
 INC = -I. -I/usr/include
@@ -16,7 +17,7 @@ endif
 LIB_MAJOR = 1
 LIB_MINOR = 0.1
 
-OBJ = util.o ssh.o sock.o vzsock.o
+OBJ = util.o fd.o ssh.o sock.o vzsock.o
 
 NAME = libvzsock
 LIB_FULL = $(NAME).so.$(LIB_MAJOR).$(LIB_MINOR)

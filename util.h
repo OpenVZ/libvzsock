@@ -112,6 +112,8 @@ int _vzs_recv_str(
 		char *data, 
 		size_t size);
 
+int _vzs_check_exit_status(struct vzsock_ctx *ctx, char *task, int status);
+
 #ifdef __cplusplus
 }
 #endif 

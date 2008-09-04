@@ -155,7 +155,6 @@ static int close_conn(struct vzsock_ctx *ctx, void *conn)
 			break;
 
 	cn->sock = -1;
-	free(conn);
 
 	return 0;
 }

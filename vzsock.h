@@ -39,6 +39,16 @@ struct vzs_handlers {
 /*
         int (*is_connected)(void *conn);
 */
+	int (*send_data)(
+			struct vzsock_ctx *ctx, 
+			void *conn, 
+			const char * remote_cmd,
+			char * const *argv);
+	int (*recv_data)(
+			struct vzsock_ctx *ctx, 
+			void *conn, 
+			const char *path,
+			char * const *argv);
 };
 
 #ifdef __cplusplus
