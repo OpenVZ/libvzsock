@@ -49,12 +49,10 @@ static int recv_str(
 static int rcopy(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
-		const char * remote_cmd,
 		char * const *task_argv);
 static int wait_rcopy(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
-		const char *target_path,
 		char * const *argv);
 
 
@@ -550,71 +548,23 @@ static int recv_str(
    - run ssh with tar on src
    - wait tar exiting on dst */
 
-#define PID_FILE                    "vzsock_ssh_pid"
 static int wait_rcopy(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
-		const char *target_path,
 		char * const *argv)
 {
-	int rc;
-	char path[PATH_MAX+1];
-	char buf[100];
-	pid_t pid = 0;
-	FILE *fp;
-	time_t tstart;
-	int code;
-
-	snprintf(path, sizeof(path), "%s/" PID_FILE, target_path);
-	if (access(target_path, F_OK)) {
-		return _vz_error(ctx, VZS_ERR_SYSTEM, 
-			"Target directory %s does not exist", target_path);
-	}
-
-	/* return basedir for path */
-	if ((rc = send(ctx, conn, target_path, strlen(target_path) + 1)))
-		return rc;
-
-	/* and wait reply */
-	if ((rc = vzsock_read_srv_reply(ctx, conn, &code, NULL, 0)))
-		return rc;
-	if (code)
-		return code;
-	
-	tstart = time(NULL);
-	while (access(path, R_OK)) {
-		if (tstart + ctx->tmo < time(NULL))
-			/* it is not a bug - 
-			   do not wait ssh and continue */
-			return 0;
-		sleep(1);
-	}
-	if ((fp = fopen(path, "r")) != NULL) {
-		if (fgets(buf, sizeof(buf), fp) != NULL) {
-			pid = atol(buf);
-		}
-		fclose(fp);
-	}
-	unlink(path);
-	if (pid <= 0)
-		return 0;
-	/* and wait */
-	_vz_logger(ctx, LOG_DEBUG, "wait 'ssh ... tar ...' with pid %d", pid);
-	while (kill(pid, 0) == 0)
-		sleep(1);
-	_vz_logger(ctx, LOG_DEBUG, "continue ... %s", strerror(errno));
 	return 0;
 }
 
-/* copy <dir> to remote host by tar via ssh */
 /* use control connection to info exchange
-   run local task, create new ssh connection to server with remote task, 
+   run local task, create new ssh connection to server with <remote_cmd>, 
    redirect stdin and stdout of local task to ssh channel
 */
-static int rcopy(
+static int _remote_rcopy(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
 		const char * remote_cmd,
+		const char * sync_msg,
 		char * const *task_argv)
 {
 	int rc = 0;
@@ -626,7 +576,7 @@ static int rcopy(
 	char **ssh_argv;
 	struct ssh_data *data = (struct ssh_data *)ctx->data;
 	int i;
-	char buffer[BUFSIZ+1];
+	char buffer[BUFSIZ];
 
 	_vzs_string_list_init(&ssh_argl);
 
@@ -639,19 +589,6 @@ static int rcopy(
 		goto cleanup_0;
 	}
 	_vz_set_nonblock(out[0]);
-
-#if 0
-	/* send command to dst */
-	if ((rc = send(ctx, conn, cmd, strlen(cmd) + 1)))
-		goto cleanup_2;
-
-	/* and wait reply with target dir */
-	if ((rc = vzsock_read_srv_reply(ctx, conn, &retcode, reply, sizeof(reply))))
-		goto cleanup_2;
-	snprintf(buffer, sizeof(buffer),
-		"echo $$ > %s/" PID_FILE "; tar -p -S --same-owner -x -C %s",
-		reply, reply);
-#endif
 
 	if ((rc = get_args(ctx, &ssh_argl))) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
@@ -744,7 +681,7 @@ static int rcopy(
 	}
 	close(in[1]); close(out[0]);
 
-	if ((rc = send(ctx, conn, "ssh_started", strlen("ssh_started") + 1)))
+	if ((rc = send(ctx, conn, sync_msg, strlen(sync_msg) + 1)))
 		goto cleanup_4;
 
 	rc = 0;
@@ -798,3 +735,39 @@ cleanup_0:
 
 	return rc;
 }
+
+/* remote copy */
+static int rcopy(struct vzsock_ctx *ctx, void *conn, char * const *argv)
+{
+	int rc;
+	char reply[BUFSIZ];
+
+	/* read remote command from server */
+	if ((rc = vzsock_read_srv_reply(ctx, conn, reply, sizeof(reply))))
+		return 0;
+	return _remote_rcopy(ctx, conn, reply, VZS_SYNC_MSG, argv);
+}
+#if 0
+/* remote copy, old vzmigrate mode */
+static int old_rcopy(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * pid_file,
+		const char * remote_cmd,
+		char * const *argv)
+{
+	int rc;
+	char reply[PATH_MAX];
+	char buffer[BUFSIZ];
+
+	/* read reply from server with target path */
+	if ((rc = vzsock_read_srv_reply(ctx, conn, reply, sizeof(reply))))
+		return 0;
+	snprintf(buffer, sizeof(buffer),
+		"echo $$ > %s/%s; tar -p -S --same-owner -x -C %s",
+		reply, pid_file, reply);
+
+	return _remote_rcopy(ctx, conn, remote_cmd, "ssh_started", argv);
+}
+#endif
+

@@ -30,6 +30,7 @@ struct vzsock_ctx {
 	/* specific data */
 	void *data;
 	int debug;
+	int code; /* reply code from server side, used on client only */ 
 	int errcode;
 	char errmsg[BUFSIZ];
 	int (*logger)(int level, const char *fmt, va_list pvar);
@@ -52,10 +53,11 @@ struct vzsock_ctx {
 /* errors code */
 #define VZS_ERR_SYSTEM		1
 #define VZS_ERR_CANT_CONNECT	2
-#define VZS_ERR_BAD_PARAM	3
-#define VZS_ERR_TIMEOUT		4
+#define VZS_ERR_BAD_PARAM	3 /* invalid parameter value */
+#define VZS_ERR_TIMEOUT		4 /* timeout exceeded */
 #define VZS_ERR_CONN_BROKEN	5
-#define VZS_ERR_TOOLONG		6
+#define VZS_ERR_TOOLONG		6 /* too long message */
+
 #ifdef __cplusplus
 extern "C" {
 #endif 
@@ -83,7 +85,6 @@ int vzsock_send(
 int vzsock_recv_str(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
-		char separator, 
 		char *data, 
 		size_t size);
 /* 
@@ -94,20 +95,23 @@ int vzsock_recv_str(
 int vzsock_read_srv_reply(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
-		int *code, 
 		char *reply, 
 		size_t size);
+
+int vzsock_send_srv_reply(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		int code, 
+		char *reply); 
 
 /*  */
 int vzsock_send_data(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
-		const char * remote_cmd,
 		char * const *argv);
 int vzsock_recv_data(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
-		const char *path,
 		char * const *argv);
 
 #ifdef __cplusplus

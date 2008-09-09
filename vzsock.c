@@ -58,7 +58,7 @@ int vzsock_init(
  
 	/* create temporary directory (mkdtemp() will set perms 0700) */
 	_vzs_get_tmp_dir(path, sizeof(path));
-	snprintf(ctx->tmpdir, sizeof(ctx->tmpdir), "%s/vzm.XXXXXX", path);
+	snprintf(ctx->tmpdir, sizeof(ctx->tmpdir), "%s/vzsock.XXXXXX", path);
 	if (mkdtemp(ctx->tmpdir) == NULL) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM,
 			"mkdtemp(%s) : %m", ctx->tmpdir);
@@ -199,31 +199,24 @@ int vzsock_send(
 int vzsock_recv_str(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
-		char separator, 
 		char *data, 
 		size_t size)
 {
 	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
 
-	return handlers->recv_str(ctx, conn, separator, data, size);
+	return handlers->recv_str(ctx, conn, '\0', data, size);
 }
 
-#define VZS_ERR_DEBUG_OUT	1
 /*
  Message format : |code|:message
- code > 0 - debug message
- code == 0 - info
- code < 0 - error
+ code == 0 - server reply,
+ also: LOG_ERR LOG_WARNING LOG_NOTICE LOG_INFO LOG_DEBUG 
  Server can send debug message, client will show his message
- 
- To read reply from server(destination) side as |errcode|:replymessage
  NOTE: use only on client(source) side
- NOTE: you also can send debug/info/warning messages from destination node
 */
 int vzsock_read_srv_reply(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
-		int *code, 
 		char *reply, 
 		size_t size)
 {
@@ -233,7 +226,7 @@ int vzsock_read_srv_reply(
 	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
 
 	/* read/and log debug/info/.. messages until get reply */
-	*code = 0;
+	ctx->code = 0;
 	while (1) {
 		if ((rc = handlers->recv_str(ctx, conn, '\0', buffer, sizeof(buffer))))
 			return rc;
@@ -245,8 +238,9 @@ int vzsock_read_srv_reply(
 		if (*p != '|')
 			break;
 		*(p++) = '\0';
-		*code = strtol(buffer+1, NULL, 10);
-		if (*code < VZS_ERR_DEBUG_OUT)
+		ctx->code = strtol(buffer+1, NULL, 10);
+//		if (ctx->code < LOG_DEBUG)
+		if (ctx->code < 1)
 			break;
 
 		/* it's a debug message : print and wait reply again
@@ -258,26 +252,37 @@ int vzsock_read_srv_reply(
 	return 0;
 }
 
+int vzsock_send_srv_reply(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		int code, 
+		char *reply) 
+{
+	char buffer[BUFSIZ+1];
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+
+	snprintf(buffer, sizeof(buffer), "|%d|%s", code, reply);
+	return handlers->send(ctx, conn, buffer, strlen(buffer)+1);
+}
+
 int vzsock_send_data(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
-		const char * remote_cmd,
 		char * const *argv)
 {
 	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
 
-	return handlers->send_data(ctx, conn, remote_cmd, argv);
+	return handlers->send_data(ctx, conn, argv);
 }
 
 int vzsock_recv_data(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
-		const char *path,
 		char * const *argv)
 {
 	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
 
-	return handlers->recv_data(ctx, conn, path, argv);
+	return handlers->recv_data(ctx, conn, argv);
 }
 
 

@@ -7,6 +7,12 @@
 #ifndef __VZSOCK_H__
 #define __VZSOCK_H__
 
+#define VZS_SYNC_MSG "vzsock_sync"
+
+#ifdef __cplusplus
+extern "C" {
+#endif 
+
 /* handlers set */
 struct vzs_handlers {
 	/* open context */
@@ -42,18 +48,12 @@ struct vzs_handlers {
 	int (*send_data)(
 			struct vzsock_ctx *ctx, 
 			void *conn, 
-			const char * remote_cmd,
 			char * const *argv);
 	int (*recv_data)(
 			struct vzsock_ctx *ctx, 
 			void *conn, 
-			const char *path,
 			char * const *argv);
 };
-
-#ifdef __cplusplus
-extern "C" {
-#endif 
 
 #ifdef __cplusplus
 }

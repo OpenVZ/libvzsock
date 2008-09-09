@@ -6,11 +6,16 @@
 #include <string.h>
 #include <syslog.h>
 
+#include "vzsock_sample.h"
+
 static int logger(int level, const char* fmt, va_list pvar)
 {
+	va_list ap;
 	FILE *fp = (level <= LOG_WARNING) ? stderr : stdout;
 	/* put to syslog and to some output also */
-	vsyslog(level, fmt, pvar);
+	va_copy(ap, pvar);
+	vsyslog(level, fmt, ap);
+	va_end(ap);
 	vfprintf(fp, fmt, pvar);
 	fputc('\n', fp);
 	return 0;
@@ -24,9 +29,8 @@ int main(int argc, const char *argv[])
 	char * const args[] = {"vzsock_ssh_srv", NULL};
 	void *conn;
 	int debug = LOG_DEBUG;
-	const char *cmd_init = "init";
-	int retcode;
-	char reply[BUFSIZ]; 
+	char buffer[BUFSIZ]; 
+	char * const targs[] = { "/bin/tar", "-c", "-S", "--ignore-failed-read", "--numeric-owner", "-f", "-", "-C", "/root/", "vzmigrate", NULL };
 
 	if (argc != 3) {
 		fprintf(stderr, "Usage : %s path hostname\n", argv[0]);
@@ -41,31 +45,57 @@ int main(int argc, const char *argv[])
 	vzsock_set(&ctx, VZSOCK_DATA_DEBUG, (void *)&debug, sizeof(debug));
 	if ((rc = vzsock_set(&ctx, VZSOCK_DATA_HOSTNAME, (void *)argv[2], strlen(argv[2])+1))) {
 		fprintf(stderr, "vzsock_set() return %d\n", rc);
-		return -1;
+		goto cleanup_0;
 	}
 	if ((rc = vzsock_open(&ctx))) {
 		fprintf(stderr, "vzsock_open() return %d\n", rc);
-		return -1;
+		goto cleanup_0;
 	}
 
 	if ((rc = vzsock_create_conn(&ctx, args, &conn))) {
 		fprintf(stderr, "vzsock_create_conn() return %d\n", rc);
-		return -1;
+		goto cleanup_0;
 	}
-	if ((rc = vzsock_send(&ctx, conn, cmd_init, strlen(cmd_init)+1))) {
+
+	/* send first command and wait reply */
+	if ((rc = vzsock_send(&ctx, conn, CMD_INIT, strlen(CMD_INIT)+1))) {
 		fprintf(stderr, "vzsock_send() return %d\n", rc);
-		return -1;
+		goto cleanup_1;
 	}
-	if ((rc = vzsock_read_srv_reply(&ctx, conn, &retcode, reply, sizeof(reply)))) {
+	if ((rc = vzsock_read_srv_reply(&ctx, conn, buffer, sizeof(buffer)))) {
 		fprintf(stderr, "vzsock_read_srv_reply() return %d\n", rc);
-		return -1;
+		goto cleanup_1;
 	}
-	fprintf(stdout, "retcode = %d, reply is %s\n", retcode, reply);
-	if (retcode) {
-		fprintf(stderr, "server side return %d\n", retcode);
-		return -1;
+	fprintf(stdout, "reply is %s\n", buffer);
+
+	/* copy dir */
+	if ((rc = vzsock_send(&ctx, conn, CMD_COPY, strlen(CMD_COPY)+1))) {
+		fprintf(stderr, "vzsock_send() return %d\n", rc);
+		goto cleanup_1;
 	}
+	if ((rc = vzsock_read_srv_reply(&ctx, conn, buffer, sizeof(buffer)))) {
+		fprintf(stderr, "vzsock_read_srv_reply() return %d\n", rc);
+		goto cleanup_1;
+	}
+	fprintf(stdout, "reply is %s\n", buffer);
+	if ((rc = vzsock_send_data(&ctx, conn, targs))) {
+		fprintf(stderr, "vzsock_send_data() return %d\n", rc);
+		goto cleanup_1;
+	}
+
+	/* close connection */
+	if ((rc = vzsock_send(&ctx, conn, CMD_CLOSE, strlen(CMD_CLOSE)+1))) {
+		fprintf(stderr, "vzsock_send() return %d\n", rc);
+		goto cleanup_1;
+	}
+	if ((rc = vzsock_read_srv_reply(&ctx, conn, buffer, sizeof(buffer)))) {
+		fprintf(stderr, "vzsock_read_srv_reply() return %d\n", rc);
+		goto cleanup_1;
+	}
+	fprintf(stdout, "reply is %s\n", buffer);
+cleanup_1:
 	vzsock_close_conn(&ctx, conn);
+cleanup_0:
 	vzsock_close(&ctx);
 
 	return 0;
