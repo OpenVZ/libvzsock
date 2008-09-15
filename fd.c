@@ -37,6 +37,14 @@ static int recv_str(
 		char separator, 
 		char *data, 
 		size_t size);
+static int rcopy(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		char * const *task_argv);
+static int wait_rcopy(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		char * const *argv);
 
 
 int _vzs_fd_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
@@ -52,6 +60,8 @@ int _vzs_fd_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->set_conn = set_conn;
 	handlers->send = _send;
 	handlers->recv_str = recv_str;
+	handlers->send_data = rcopy;
+	handlers->recv_data = wait_rcopy;
 
 	return 0;
 }
@@ -138,3 +148,85 @@ static int recv_str(
 	return _vzs_recv_str(ctx, cn->in, separator, data, size);
 }
 
+static void alarm_handler(int sig)
+{
+	return;
+}
+
+/* create & open fifo, read pid from fifo and wait end of this proccess */
+static int wait_rcopy(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		char * const *argv)
+{
+	int rc;
+	char path[PATH_MAX+1];
+	pid_t pid = 0;
+	int fd;
+	char buffer[BUFSIZ];
+	int i;
+	struct sigaction act;
+	struct sigaction old_act;
+
+	snprintf(path, sizeof(path), "%s/pidfile.XXXXXX", ctx->tmpdir);
+	if ((fd = mkstemp(path)) == -1)
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "mkstemp(%s) : %m", path);
+	close(fd);
+	unlink(path);
+	if (mkfifo(path, 0666) == -1)
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "mkfifo(%s) : %m", path);
+
+	snprintf(buffer, sizeof(buffer), "echo $$ > /%s;", path);
+	for (i = 0; argv[i]; i++) {
+		strncat(buffer, " ", sizeof(buffer)-strlen(buffer)-1);
+		strncat(buffer, argv[i], sizeof(buffer)-strlen(buffer)-1);
+	}
+
+	if ((rc = vzsock_send_srv_reply(ctx, conn, 0, buffer)))
+		return rc;
+
+	/* and wait reply */
+	if ((rc = vzsock_recv_str(ctx, conn, buffer, sizeof(buffer))))
+		return rc;
+	/* open() will lock until so long as anybody will write into fifo */
+	act.sa_flags = 0;
+	sigemptyset(&act.sa_mask);
+	act.sa_handler = alarm_handler;
+	sigaction(SIGALRM, &act, &old_act);
+	alarm(ctx->tmo);
+	fd = open(path, O_RDONLY);
+	alarm(0);
+	sigaction(SIGALRM, &old_act, NULL);
+	if (fd == -1) {
+		if (errno == EINTR) {
+			return _vz_error(ctx, VZS_ERR_TIMEOUT, 
+				"open(%s) lock timeout exceeded", path);
+		} else {
+			return _vz_error(ctx, VZS_ERR_SYSTEM, "open(%s) : %m", path);
+		}
+	}
+
+	_vz_set_nonblock(fd);
+
+	/* read pid from fifo */
+	if (_vzs_recv_str(ctx, fd, '\n', buffer, sizeof(buffer)) == 0)
+			pid = atol(buffer);
+	close(fd);
+	unlink(path);
+	if (pid > 0) {
+		/* and wait */
+		_vz_logger(ctx, LOG_DEBUG, "wait 'ssh ... tar ...' with pid %d", pid);
+		while (kill(pid, 0) == 0)
+			sleep(1);
+	}
+	/* send acknowledgement */
+	if ((rc = vzsock_send_srv_reply(ctx, conn, 0, VZS_SYNC_MSG)))
+		return rc;
+	_vz_logger(ctx, LOG_DEBUG, "continue ... %s", strerror(errno));
+	return 0;
+}
+
+static int rcopy(struct vzsock_ctx *ctx, void *conn, char * const *argv)
+{
+	return 0;
+}

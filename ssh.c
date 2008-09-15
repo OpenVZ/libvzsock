@@ -744,8 +744,15 @@ static int rcopy(struct vzsock_ctx *ctx, void *conn, char * const *argv)
 
 	/* read remote command from server */
 	if ((rc = vzsock_read_srv_reply(ctx, conn, reply, sizeof(reply))))
-		return 0;
-	return _remote_rcopy(ctx, conn, reply, VZS_SYNC_MSG, argv);
+		return rc;
+
+	if ((rc = _remote_rcopy(ctx, conn, reply, VZS_SYNC_MSG, argv)))
+		return rc;
+
+	/* and wait acknowledgement */
+	if ((rc = vzsock_read_srv_reply(ctx, conn, reply, sizeof(reply))))
+		return rc;
+	return 0;
 }
 #if 0
 /* remote copy, old vzmigrate mode */
