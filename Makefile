@@ -17,7 +17,7 @@ endif
 LIB_MAJOR = 1
 LIB_MINOR = 0.1
 
-OBJ = util.o fd.o ssh.o sock.o vzsock.o
+OBJ = util.o fd.o ssh.o sock.o ssl.o vzsock.o
 
 NAME = libvzsock
 LIB_FULL = $(NAME).so.$(LIB_MAJOR).$(LIB_MINOR)
@@ -28,7 +28,7 @@ all: $(NAME).a $(NAME).so $(LIB_FULL) $(LIB_SHORT)
 
 $(LIB_FULL): $(OBJ)
 	$(CC) $(CFLAGS) $(INC) $(LDFLAGS) -shared --as-needed \
-	-Wl,-soname=$(LIB_SHORT) $^ -o $@
+	-Wl,-soname=$(LIB_SHORT) -lssl $^ -o $@
 
 $(NAME).so: $(LIB_FULL)
 	ln -sf $(LIB_FULL) $(NAME).so

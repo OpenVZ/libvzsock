@@ -27,6 +27,11 @@ struct vzs_handlers {
 			char * const args[], void **conn);
 	/* close connection */
 	int (*close_conn)(struct vzsock_ctx *ctx, void *conn);
+
+	int (*connect)(struct vzsock_ctx *ctx, void **conn);
+	int (*listen)(struct vzsock_ctx *ctx, void **conn);
+	int (*accept)(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
+
 	/* set connection parameter(s) */
 	int (*set_conn)(struct vzsock_ctx *ctx, void *conn, 
 			int type, void *data, size_t size);

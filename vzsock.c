@@ -19,6 +19,7 @@
 #include "ssh.h"
 #include "sock.h"
 #include "fd.h"
+#include "ssl.h"
 
 /* context operations */
 
@@ -76,6 +77,10 @@ int vzsock_init(
 		break;
 	case VZSOCK_FD:
 		if ((rc = _vzs_fd_init(ctx, handlers)))
+			goto cleanup_2;
+		break;
+	case VZSOCK_SSL:
+		if ((rc = _vzs_ssl_init(ctx, handlers)))
 			goto cleanup_2;
 		break;
 	default:
@@ -152,6 +157,48 @@ int vzsock_create_conn(struct vzsock_ctx *ctx, char * const args[], void **conn)
 	struct vzs_string_list *clist = (struct vzs_string_list *)ctx->clist;
 
 	if ((rc = handlers->open_conn(ctx, args, conn)))
+		return rc;
+	/* and add into list */
+	if (_vzs_string_list_add(clist, *conn))
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
+	return 0;
+}
+
+int vzsock_connect(struct vzsock_ctx *ctx, void **conn)
+{
+	int rc;
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+	struct vzs_string_list *clist = (struct vzs_string_list *)ctx->clist;
+
+	if ((rc = handlers->connect(ctx, conn)))
+		return rc;
+	/* and add into list */
+	if (_vzs_string_list_add(clist, *conn))
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
+	return 0;
+}
+
+int vzsock_listen(struct vzsock_ctx *ctx, void **conn)
+{
+	int rc;
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+	struct vzs_string_list *clist = (struct vzs_string_list *)ctx->clist;
+
+	if ((rc = handlers->listen(ctx, conn)))
+		return rc;
+	/* and add into list */
+	if (_vzs_string_list_add(clist, *conn))
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
+	return 0;
+}
+
+int vzsock_accept(struct vzsock_ctx *ctx, void *srv_conn, void **conn)
+{
+	int rc;
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+	struct vzs_string_list *clist = (struct vzs_string_list *)ctx->clist;
+
+	if ((rc = handlers->accept(ctx, srv_conn, conn)))
 		return rc;
 	/* and add into list */
 	if (_vzs_string_list_add(clist, *conn))

@@ -46,10 +46,17 @@ struct vzsock_ctx {
 #define VZSOCK_DATA_FDPAIR	3 /* pair of file descriptors */
 #define VZSOCK_DATA_SOCK_DOMAIN	4 /* socket domain */
 #define VZSOCK_DATA_SOCK_TYPE	5 /* socket type */
-#define VZSOCK_DATA_TMO	6 /* connection timeout */
-#define VZSOCK_DATA_DEBUG	7 /* debug level */
+#define VZSOCK_DATA_SOCK_PROTO	6 /* socket protocol */
+#define VZSOCK_DATA_TMO	7 /* connection timeout */
+#define VZSOCK_DATA_DEBUG	8 /* debug level */
+#define VZSOCK_DATA_CRTFILE	9 /* certificate file name */
+#define VZSOCK_DATA_KEYFILE	10 /* private key file name */
+#define VZSOCK_DATA_CIPHERS	11 /* ciphers list */
+#define VZSOCK_DATA_MODE	12 /* server or client */
+#define VZSOCK_MODE_CLIENT	0
+#define VZSOCK_MODE_SERVER	1
 
-
+ 
 /* errors code */
 #define VZS_ERR_SYSTEM		1
 #define VZS_ERR_CANT_CONNECT	2
@@ -73,6 +80,11 @@ int vzsock_set(struct vzsock_ctx *ctx, int type, void *data, size_t size);
 
 int vzsock_create_conn(struct vzsock_ctx *ctx, 
 		char * const args[], void **conn);
+
+int vzsock_connect(struct vzsock_ctx *ctx, void **conn);
+int vzsock_listen(struct vzsock_ctx *ctx, void **conn);
+int vzsock_accept(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
+
 int vzsock_close_conn(struct vzsock_ctx *ctx, void *conn);
 int vzsock_set_conn(struct vzsock_ctx *ctx, void *conn, 
 		int type, void *data, size_t size);
