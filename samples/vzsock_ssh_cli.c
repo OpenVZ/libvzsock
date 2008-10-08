@@ -7,7 +7,7 @@
 #include <syslog.h>
 #include <libgen.h>
 
-#include "vzsock_sample.h"
+#include "sample.h"
 
 static int logger(int level, const char* fmt, va_list pvar)
 {

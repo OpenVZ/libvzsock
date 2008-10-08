@@ -30,7 +30,7 @@
 
 #include <libvzsock.h>
 
-#include "vzsock_sample.h"
+#include "sample.h"
 
 char progname[NAME_MAX];
 int debug = 0;
