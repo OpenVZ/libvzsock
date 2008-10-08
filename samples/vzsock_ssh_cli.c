@@ -5,6 +5,7 @@
 #include <libvzsock.h>
 #include <string.h>
 #include <syslog.h>
+#include <libgen.h>
 
 #include "vzsock_sample.h"
 
@@ -24,19 +25,40 @@ static int logger(int level, const char* fmt, va_list pvar)
 int main(int argc, const char *argv[])
 {
 	int rc;
-	char *path;
 	struct vzsock_ctx ctx;
 	char * const args[] = {"vzsock_ssh_srv", NULL};
 	void *conn;
 	int debug = LOG_DEBUG;
 	char buffer[BUFSIZ]; 
-	char * const targs[] = { "/bin/tar", "-c", "-S", "--ignore-failed-read", "--numeric-owner", "-f", "-", "-C", "/root/", "vzmigrate", NULL };
+	char lname[PATH_MAX];
+	char lpath[PATH_MAX];
+	char rpath[PATH_MAX];
+	char *p;
+	char * const targs[] = { 
+			"tar", 
+			"-c", 
+			"-S", 
+			"--ignore-failed-read", 
+			"--numeric-owner", 
+			"-f", 
+			"-", 
+			"-C", 
+			lpath, 
+			lname,
+			NULL };
 
 	if (argc != 3) {
 		fprintf(stderr, "Usage : %s path hostname\n", argv[0]);
 		return 1;
 	}
-	path = (char *)argv[1];
+	strncpy(buffer, argv[1], sizeof(buffer));
+	strncpy(lname, basename(buffer), sizeof(lname));
+	strncpy(lpath, dirname(buffer), sizeof(lpath));
+	if ((p = strchr(argv[2], ':'))) {
+		strncpy(rpath, p+1, sizeof(rpath));
+	} else {
+		strcpy(rpath, "/");
+	}
 
 	if ((rc = vzsock_init(VZSOCK_SSH, &ctx, logger, NULL))) {
 		fprintf(stderr, "vzsock_init() return %d\n", rc);
@@ -51,7 +73,9 @@ int main(int argc, const char *argv[])
 		fprintf(stderr, "vzsock_open() return %d\n", rc);
 		goto cleanup_0;
 	}
-
+/* TODO
+	vzsock_set(&ctx, VZSOCK_DATA_ARGS, (void *)&args, sizeof(args));
+*/
 	if ((rc = vzsock_create_conn(&ctx, args, &conn))) {
 		fprintf(stderr, "vzsock_create_conn() return %d\n", rc);
 		goto cleanup_0;
@@ -69,7 +93,8 @@ int main(int argc, const char *argv[])
 	fprintf(stdout, "reply is %s\n", buffer);
 
 	/* copy dir */
-	if ((rc = vzsock_send(&ctx, conn, CMD_COPY, strlen(CMD_COPY)+1))) {
+	snprintf(buffer, sizeof(buffer), CMD_COPY " %s", rpath);
+	if ((rc = vzsock_send(&ctx, conn, buffer, strlen(buffer)+1))) {
 		fprintf(stderr, "vzsock_send() return %d\n", rc);
 		goto cleanup_1;
 	}

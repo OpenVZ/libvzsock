@@ -7,19 +7,25 @@
 #include <syslog.h>
 
 #include "vzsock_sample.h"
+/*
+int logger(int level, const char *fmt, va_list pvar);
+{
+	char buffer[BUFSIZ];
 
-//int logger(int level, const char *fmt, va_list pvar);
-//int readpwd(const char *prompt, char *pass, size_t size);
+	snprintf(buffer, sizeof(buffer), "-> %s", cmd);
+	syslog(LOG_INFO, "%s", buffer);
+	vzsock_send_srv_reply(&ctx, conn, LOG_INFO, buffer);
+}
+*/
 
 int main(int argc, const char *argv[])
 {
 	int rc = 0;
 	struct vzsock_ctx ctx;
 	int debug = LOG_DEBUG;
-	char * const args[] = {NULL};
 	void *conn;
-	char cmd[BUFSIZ];
 	int fds[2];
+	char * const args[] = {NULL};
 
 	openlog("vzs_ssh_srv", LOG_PID, LOG_USER);
 
@@ -45,60 +51,10 @@ int main(int argc, const char *argv[])
 		syslog(LOG_ERR, "vzsock_set_conn() return %d", rc);
 		goto cleanup_1;
 	}
-	/* read command from client */
-	if ((rc = vzsock_recv_str(&ctx, conn, cmd, sizeof(cmd)))) {
-		syslog(LOG_ERR, "vzsock_recv_str() return %d", rc);
+
+	if ((rc = server(&ctx, conn)))
 		goto cleanup_1;
-	}
 
-	{
-	char buffer[BUFSIZ];
-
-	snprintf(buffer, sizeof(buffer), "-> %s", cmd);
-	syslog(LOG_INFO, "%s", buffer);
-	vzsock_send_srv_reply(&ctx, conn, LOG_INFO, buffer);
-	}
-
-	if (strncmp(cmd, CMD_INIT, strlen(CMD_INIT))) {
-		syslog(LOG_ERR, "Invalid command: '%s'", cmd);
-		// vzsock_error(&ctx, conn, "Invalid command: '%s'", cmd);
-		rc = -1;
-		goto cleanup_1;
-	}
-	syslog(LOG_INFO, "-> %s", cmd);
-	if ((rc = vzsock_send_srv_reply(&ctx, conn, 0, CMD_ACK))) {
-		syslog(LOG_ERR, "vzsock_send() return %d", rc);
-		goto cleanup_1;
-	}
-
-	while(1) {
-		if ((rc = vzsock_recv_str(&ctx, conn, cmd, sizeof(cmd)))) {
-			syslog(LOG_ERR, "vzsock_recv_str() return %d", rc);
-			goto cleanup_1;
-		}
-		if (strlen(cmd) == 0) {
-			syslog(LOG_ERR, "Broken channel");
-			goto cleanup_1;
-		}
-		syslog(LOG_INFO, "-> %s", cmd);
-		if (strncmp(cmd, CMD_CLOSE, strlen(CMD_CLOSE)) == 0) {
-			if ((rc = vzsock_send_srv_reply(&ctx, conn, 0, CMD_ACK))) {
-				syslog(LOG_ERR, "vzsock_send() return %d", rc);
-				goto cleanup_1;
-			}
-			break;
-		} else if (strncmp(cmd, CMD_COPY, strlen(CMD_CLOSE)) == 0) {
-			char * const targs[] = {"tar", "-p", "-S", "--same-owner", "-x", "-C", "/tmp", NULL};
-			if ((rc = vzsock_send_srv_reply(&ctx, conn, 0, CMD_ACK))) {
-				syslog(LOG_ERR, "vzsock_send_srv_reply() return %d", rc);
-				goto cleanup_1;
-			}
-			if ((rc = vzsock_recv_data(&ctx, conn, targs))) {
-				syslog(LOG_ERR, "vzsock_recv_data() return %d", rc);
-				goto cleanup_1;
-			}
-		}
-	}
 	syslog(LOG_INFO, "Conection closed");
 
 cleanup_1:
