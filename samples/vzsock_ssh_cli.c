@@ -6,6 +6,7 @@
 #include <string.h>
 #include <syslog.h>
 #include <libgen.h>
+#include <signal.h>
 
 #include "sample.h"
 
@@ -22,6 +23,17 @@ static int logger(int level, const char* fmt, va_list pvar)
 	return 0;
 }
 
+/*
+void terminate(int signum)
+{
+	// send sigterm to all processes in group
+	kill(0, SIGTERM);
+
+	unlink(pidfile);
+	exit(-MIG_ERR_TERM);
+}
+*/
+
 int main(int argc, const char *argv[])
 {
 	int rc;
@@ -34,6 +46,7 @@ int main(int argc, const char *argv[])
 	char lpath[PATH_MAX];
 	char rpath[PATH_MAX];
 	char *p;
+	struct sigaction sigact;
 	char * const targs[] = { 
 			"tar", 
 			"-c", 
@@ -59,6 +72,13 @@ int main(int argc, const char *argv[])
 	} else {
 		strcpy(rpath, "/");
 	}
+
+	sigemptyset(&sigact.sa_mask);
+	sigact.sa_flags = 0;
+//	sigact.sa_handler = terminate;
+//	sigaction(SIGTERM, &sigact, NULL);
+	sigact.sa_handler = SIG_IGN;
+	sigaction(SIGPIPE, &sigact, NULL);
 
 	if ((rc = vzsock_init(VZSOCK_SSH, &ctx, logger, NULL))) {
 		fprintf(stderr, "vzsock_init() return %d\n", rc);
@@ -123,5 +143,5 @@ cleanup_1:
 cleanup_0:
 	vzsock_close(&ctx);
 
-	return 0;
+	return rc;
 }

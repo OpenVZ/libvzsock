@@ -11,6 +11,7 @@
 #define CMD_CLOSE "close"
 #define CMD_ACK "ack"
 #define CMD_COPY "copy"
+#define CMD_REJECT "reject"
 
 #define VZSOCK_TEST_PORT 4422
 

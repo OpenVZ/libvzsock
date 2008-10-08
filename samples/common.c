@@ -67,7 +67,7 @@ int server(struct vzsock_ctx *ctx, void *conn)
 				return rc;
 			}
 			break;
-		} else if (strncmp(cmd, CMD_COPY, strlen(CMD_CLOSE)) == 0) {
+		} else if (strncmp(cmd, CMD_COPY, strlen(CMD_COPY)) == 0) {
 			if ((rc = vzsock_send_srv_reply(ctx, conn, 0, CMD_ACK))) {
 				syslog(LOG_ERR, "vzsock_send_srv_reply() return %d", rc);
 				return rc;
@@ -78,6 +78,11 @@ int server(struct vzsock_ctx *ctx, void *conn)
 			strncpy(path, p, sizeof(path));
 			if ((rc = vzsock_recv_data(ctx, conn, targs))) {
 				syslog(LOG_ERR, "vzsock_recv_data() return %d", rc);
+				return rc;
+			}
+		} else {
+			if ((rc = vzsock_send_srv_reply(ctx, conn, 0, CMD_REJECT))) {
+				syslog(LOG_ERR, "vzsock_send_srv_reply() return %d", rc);
 				return rc;
 			}
 		}
