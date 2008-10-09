@@ -19,6 +19,13 @@ struct vzs_string_list_el {
 	TAILQ_ENTRY(vzs_string_list_el) e;
 };
 
+/* void * double-linked list */
+TAILQ_HEAD(vzs_void_list, vzs_void_list_el);
+struct vzs_void_list_el {
+	void *p;
+	TAILQ_ENTRY(vzs_void_list_el) e;
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif 
@@ -90,6 +97,29 @@ int _vzs_string_list_to_buf(
 		size_t size);
 
 #define _vzs_string_list_for_each(ls, el) \
+	for (	(el) = ((ls) != NULL) ? (ls)->tqh_first : NULL; \
+		(el) != NULL; \
+		(el) = (el)->e.tqe_next)
+
+/* void * double-linked list */
+/* list initialization */
+static inline void _vzs_void_list_init(struct vzs_void_list *ls)
+{
+	TAILQ_INIT(ls);
+}
+
+/* remove all elements and its content */
+void _vzs_void_list_clean(struct vzs_void_list *ls);
+
+/* add new element in tail */
+int _vzs_void_list_add(struct vzs_void_list *ls, const void *ptr);
+
+/* remove element and its content and return pointer to previous elem */
+struct vzs_void_list_el * _vzs_void_list_remove(
+		struct vzs_void_list *ls,
+		struct vzs_void_list_el *el);
+
+#define _vzs_void_list_for_each(ls, el) \
 	for (	(el) = ((ls) != NULL) ? (ls)->tqh_first : NULL; \
 		(el) != NULL; \
 		(el) = (el)->e.tqe_next)

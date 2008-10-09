@@ -32,7 +32,7 @@ int vzsock_init(
 	int rc;
 	char path[PATH_MAX];
 	struct vzs_handlers *handlers;
-	struct vzs_string_list *clist;
+	struct vzs_void_list *clist;
 
 //	openlog("VZM", LOG_PERROR, LOG_USER);
 
@@ -40,12 +40,12 @@ int vzsock_init(
 	if ((handlers = (struct vzs_handlers *)
 			malloc(sizeof(struct vzs_handlers))) == NULL)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
-	if ((clist = (struct vzs_string_list *)
-			malloc(sizeof(struct vzs_string_list))) == NULL) {
+	if ((clist = (struct vzs_void_list *)
+			malloc(sizeof(struct vzs_void_list))) == NULL) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
 		goto cleanup_0;
 	}
-	_vzs_string_list_init(clist);
+	_vzs_void_list_init(clist);
 	ctx->type = type;
 	ctx->handlers = (void *)handlers;
 	ctx->clist = (void *)clist;
@@ -111,13 +111,13 @@ int vzsock_open(struct vzsock_ctx *ctx)
 void vzsock_close(struct vzsock_ctx *ctx)
 {
 	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
-	struct vzs_string_list *clist = (struct vzs_string_list *)ctx->clist;
-	struct vzs_string_list_el *cn;
+	struct vzs_void_list *clist = (struct vzs_void_list *)ctx->clist;
+	struct vzs_void_list_el *cn;
 
 	/* close all connections */
-	_vzs_string_list_for_each(clist, cn)
-		handlers->close_conn(ctx, cn->s);
-	_vzs_string_list_clean(clist);
+	_vzs_void_list_for_each(clist, cn)
+		handlers->close_conn(ctx, cn->p);
+	_vzs_void_list_clean(clist);
 	free(ctx->clist);
 	ctx->clist = NULL;
 
@@ -150,58 +150,44 @@ int vzsock_set(struct vzsock_ctx *ctx, int type, void *data, size_t size)
 
 /* per-connection functions */
 
-int vzsock_create_conn(struct vzsock_ctx *ctx, char * const args[], void **conn)
+int vzsock_open_conn(struct vzsock_ctx *ctx, void *data, void **conn)
 {
 	int rc;
 	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
-	struct vzs_string_list *clist = (struct vzs_string_list *)ctx->clist;
+	struct vzs_void_list *clist = (struct vzs_void_list *)ctx->clist;
 
-	if ((rc = handlers->open_conn(ctx, args, conn)))
+	if ((rc = handlers->open_conn(ctx, data, conn)))
 		return rc;
 	/* and add into list */
-	if (_vzs_string_list_add(clist, *conn))
+	if (_vzs_void_list_add(clist, *conn))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
 	return 0;
 }
 
-int vzsock_connect(struct vzsock_ctx *ctx, void **conn)
+int vzsock_wait_conn(struct vzsock_ctx *ctx, void **conn)
 {
 	int rc;
 	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
-	struct vzs_string_list *clist = (struct vzs_string_list *)ctx->clist;
+	struct vzs_void_list *clist = (struct vzs_void_list *)ctx->clist;
 
-	if ((rc = handlers->connect(ctx, conn)))
+	if ((rc = handlers->wait_conn(ctx, conn)))
 		return rc;
 	/* and add into list */
-	if (_vzs_string_list_add(clist, *conn))
+	if (_vzs_void_list_add(clist, *conn))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
 	return 0;
 }
 
-int vzsock_listen(struct vzsock_ctx *ctx, void **conn)
+int vzsock_accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **conn)
 {
 	int rc;
 	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
-	struct vzs_string_list *clist = (struct vzs_string_list *)ctx->clist;
+	struct vzs_void_list *clist = (struct vzs_void_list *)ctx->clist;
 
-	if ((rc = handlers->listen(ctx, conn)))
+	if ((rc = handlers->accept_conn(ctx, srv_conn, conn)))
 		return rc;
 	/* and add into list */
-	if (_vzs_string_list_add(clist, *conn))
-		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
-	return 0;
-}
-
-int vzsock_accept(struct vzsock_ctx *ctx, void *srv_conn, void **conn)
-{
-	int rc;
-	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
-	struct vzs_string_list *clist = (struct vzs_string_list *)ctx->clist;
-
-	if ((rc = handlers->accept(ctx, srv_conn, conn)))
-		return rc;
-	/* and add into list */
-	if (_vzs_string_list_add(clist, *conn))
+	if (_vzs_void_list_add(clist, *conn))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
 	return 0;
 }
@@ -210,16 +196,16 @@ int vzsock_close_conn(struct vzsock_ctx *ctx, void *conn)
 {
 	int rc;
 	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
-	struct vzs_string_list *clist = (struct vzs_string_list *)ctx->clist;
-	struct vzs_string_list_el *cn;
+	struct vzs_void_list *clist = (struct vzs_void_list *)ctx->clist;
+	struct vzs_void_list_el *cn;
 
 	if ((rc = handlers->close_conn(ctx, conn)))
 		return rc;
 
 	/* and remove from list */
-	_vzs_string_list_for_each(clist, cn) {
-		if (cn->s == conn)
-			_vzs_string_list_remove(clist, cn);
+	_vzs_void_list_for_each(clist, cn) {
+		if (cn->p == conn)
+			_vzs_void_list_remove(clist, cn);
 	}
 	return 0;
 }

@@ -267,6 +267,53 @@ int _vzs_string_list_to_buf(
 	return 0;
 }
 
+
+/* 
+ void * double-linked list 
+*/
+/* add new element in tail */
+int _vzs_void_list_add(struct vzs_void_list *ls, const void *ptr)
+{
+	struct vzs_void_list_el *p;
+
+	p = (struct vzs_void_list_el *)
+		malloc(sizeof(struct vzs_void_list_el));
+	if (p == NULL)
+		return VZS_ERR_SYSTEM;
+	p->p = (void *)ptr;
+	TAILQ_INSERT_TAIL(ls, p, e);
+
+	return 0;
+}
+
+/* remove all elements and its content */
+void _vzs_void_list_clean(struct vzs_void_list *ls)
+{
+	struct vzs_void_list_el *el;
+
+	while (ls->tqh_first != NULL) {
+		el = ls->tqh_first;
+		TAILQ_REMOVE(ls, ls->tqh_first, e);
+		free((void *)el);
+	}
+}
+
+struct vzs_void_list_el * _vzs_void_list_remove(
+		struct vzs_void_list *ls,
+		struct vzs_void_list_el *el)
+{
+	/* get previous element */
+	struct vzs_void_list_el *prev = *el->e.tqe_prev;
+
+	TAILQ_REMOVE(ls, el, e);
+	free((void *)el);
+
+	return prev;
+}
+
+
+
+
 /* remove directory with content */
 int _vzs_rmdir(struct vzsock_ctx *ctx, const char *dirname)
 {

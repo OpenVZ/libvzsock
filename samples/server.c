@@ -135,15 +135,15 @@ int main(int argc, char *argv[])
 		goto cleanup_0;
 	}
 
-	if ((rc = vzsock_listen(&ctx, &srv_conn))) {
-		syslog(LOG_ERR, "vzsock_listen() return %d", rc);
+	if ((rc = vzsock_wait_conn(&ctx, &srv_conn))) {
+		syslog(LOG_ERR, "vzsock_wait_conn() return %d", rc);
 		goto cleanup_0;
 	}
 
 	syslog(LOG_INFO, "Started");
 	while (1) {
-		if ((rc = vzsock_accept(&ctx, srv_conn, &conn))) {
-			syslog(LOG_ERR, "vzsock_accept() return %d", rc);
+		if ((rc = vzsock_accept_conn(&ctx, srv_conn, &conn))) {
+			syslog(LOG_ERR, "vzsock_accept_conn() return %d", rc);
 			goto cleanup_1;
 		}
 

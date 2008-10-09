@@ -25,7 +25,6 @@ int main(int argc, const char *argv[])
 	int debug = LOG_DEBUG;
 	void *conn;
 	int fds[2];
-	char * const args[] = {NULL};
 
 	openlog("vzs_ssh_srv", LOG_PID, LOG_USER);
 
@@ -40,7 +39,7 @@ int main(int argc, const char *argv[])
 		goto cleanup_0;
 	}
 
-	if ((rc = vzsock_create_conn(&ctx, args, &conn))) {
+	if ((rc = vzsock_open_conn(&ctx, NULL, &conn))) {
 		syslog(LOG_ERR, "vzsock_create_conn() return %d", rc);
 		goto cleanup_0;
 	}

@@ -1,7 +1,7 @@
 MODE = test
 CC = gcc
-PROGS = vzsock_ssh_cli vzsock_ssh_srv server
-OBJ = vzsock_ssh_cli.o vzsock_ssh_srv.o server.o common.o
+PROGS = client vzsock_ssh_srv server
+OBJ = client.o vzsock_ssh_srv.o server.o common.o
 LIBVZSOCK = ../libvzsock.a
 CFLAGS = -g -Wall -O0
 INC = -I../
@@ -20,7 +20,7 @@ LIBD = -Wl,-Bstatic -lssl -lcrypto \
 endif
 all:: ${PROGS}
 
-vzsock_ssh_cli:: vzsock_ssh_cli.o common.o
+client:: client.o common.o
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) ${LIBVZSOCK} $(LIBD) -o $@
 
 vzsock_ssh_srv:: vzsock_ssh_srv.o common.o

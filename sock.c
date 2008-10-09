@@ -23,7 +23,7 @@
 static int open_ctx(struct vzsock_ctx *ctx);
 static void close_ctx(struct vzsock_ctx *ctx);
 static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size);
-static int _connect(struct vzsock_ctx *ctx, void **conn);
+static int _connect(struct vzsock_ctx *ctx, void *data, void **conn);
 static int _listen(struct vzsock_ctx *ctx, void **conn);
 static int _accept(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
 static int close_conn(struct vzsock_ctx *ctx, void *conn);
@@ -40,6 +40,14 @@ static int recv_str(
 		char separator, 
 		char *data, 
 		size_t size);
+static int send_data(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		char * const *task_argv);
+static int recv_data(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		char * const *argv);
 
 
 int _vzs_sock_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
@@ -61,14 +69,15 @@ int _vzs_sock_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->open = open_ctx;
 	handlers->close = close_ctx;
 	handlers->set = set_ctx;
-	handlers->open_conn = NULL;
-	handlers->connect = _connect;
-	handlers->listen = _listen;
-	handlers->accept = _accept;
+	handlers->open_conn = _connect;
+	handlers->wait_conn = _listen;
+	handlers->accept_conn = _accept;
 	handlers->close_conn = close_conn;
 	handlers->set_conn = set_conn;
 	handlers->send = _send;
 	handlers->recv_str = recv_str;
+	handlers->send_data = send_data;
+	handlers->recv_data = recv_data;
 
 	return 0;
 }
@@ -133,7 +142,7 @@ static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size)
 	return 0;
 }
 
-static int _connect(struct vzsock_ctx *ctx, void **conn)
+static int _connect(struct vzsock_ctx *ctx, void *unused, void **conn)
 {
 	int rc = 0;
 	struct sock_data *data = (struct sock_data *)ctx->data;
@@ -278,5 +287,21 @@ static int recv_str(
 	struct sock_conn *cn = (struct sock_conn *)conn;
 
 	return _vzs_recv_str(ctx, cn->sock, separator, data, size);
+}
+
+static int send_data(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		char * const *task_argv)
+{
+	return 0;
+}
+
+static int recv_data(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		char * const *argv)
+{
+	return 0;
 }
 

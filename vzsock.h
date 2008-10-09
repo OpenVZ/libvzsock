@@ -22,16 +22,14 @@ struct vzs_handlers {
 	/* set context parameter(s) */
 	int (*set)(struct vzsock_ctx *ctx, int type, void *data, size_t size);
 
-	/* open new connection */
-	int (*open_conn)(struct vzsock_ctx *ctx, 
-			char * const args[], void **conn);
+	/* open new connection (connect) */
+	int (*open_conn)(struct vzsock_ctx *ctx, void *data, void **conn);
+	/* wait incoming connection (listen) */
+	int (*wait_conn)(struct vzsock_ctx *ctx, void **conn);
+	/* accept incoming connection (accept) */
+	int (*accept_conn)(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
 	/* close connection */
 	int (*close_conn)(struct vzsock_ctx *ctx, void *conn);
-
-	int (*connect)(struct vzsock_ctx *ctx, void **conn);
-	int (*listen)(struct vzsock_ctx *ctx, void **conn);
-	int (*accept)(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
-
 	/* set connection parameter(s) */
 	int (*set_conn)(struct vzsock_ctx *ctx, void *conn, 
 			int type, void *data, size_t size);

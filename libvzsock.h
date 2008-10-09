@@ -77,14 +77,9 @@ int vzsock_init(
 int vzsock_open(struct vzsock_ctx *ctx);
 void vzsock_close(struct vzsock_ctx *ctx);
 int vzsock_set(struct vzsock_ctx *ctx, int type, void *data, size_t size);
-
-int vzsock_create_conn(struct vzsock_ctx *ctx, 
-		char * const args[], void **conn);
-
-int vzsock_connect(struct vzsock_ctx *ctx, void **conn);
-int vzsock_listen(struct vzsock_ctx *ctx, void **conn);
-int vzsock_accept(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
-
+int vzsock_open_conn(struct vzsock_ctx *ctx, void *data, void **conn);
+int vzsock_wait_conn(struct vzsock_ctx *ctx, void **conn);
+int vzsock_accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
 int vzsock_close_conn(struct vzsock_ctx *ctx, void *conn);
 int vzsock_set_conn(struct vzsock_ctx *ctx, void *conn, 
 		int type, void *data, size_t size);
