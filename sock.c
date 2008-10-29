@@ -7,6 +7,7 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/select.h>
 #include <stdio.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -292,9 +293,103 @@ static int recv_str(
 static int send_data(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
-		char * const *task_argv)
+		char * const *argv)
 {
-	return 0;
+	int rc = 0;
+	pid_t chpid, pid;
+	int status;
+	struct sock_data *data = (struct sock_data *)ctx->data;
+//	struct sock_conn *cn = (struct sock_conn *)conn;
+	int sock;
+	char reply[BUFSIZ];
+	struct sockaddr addr;
+	socklen_t addr_len;
+
+	if (data->addr == NULL)
+		return _vz_error(ctx, VZS_ERR_BAD_PARAM, "address not defined");
+
+	/* read remote command from server */
+	if ((rc = vzsock_read_srv_reply(ctx, conn, reply, sizeof(reply))))
+		return rc;
+
+	/* parse reply*/
+	switch (data->domain) {
+	case PF_INET:
+	{
+		/* send port number to client */
+		struct sockaddr_in *saddr = (struct sockaddr_in *)&addr;
+		int port;
+		char *ptr;
+		port = strtol(reply, &ptr, 10);
+		if (*ptr != '\0')
+			return _vz_error(ctx, VZS_ERR_CONN_BROKEN, 
+				"send data : invalid server port number : %s",
+				 reply);
+		addr_len = sizeof(struct sockaddr_in);
+		memcpy(saddr, data->addr, addr_len);
+		saddr->sin_port = htons(port);
+		break;
+	}
+	default:
+	{
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "can't send data for "
+			"this communication domain (%d)", data->domain);
+	}
+	}
+
+	if ((sock = socket(data->domain, data->type, data->protocol)) == -1)
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "socket() : %m");
+
+	if (connect(sock, &addr, addr_len) == -1) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "connect() : %m");
+		goto cleanup_0;
+	}
+
+	if (ctx->debug) {
+		char buffer[BUFSIZ];
+		int i;
+		buffer[0] = '\0';
+		for (i = 0; argv[i]; i++) {
+			strncat(buffer, argv[i], sizeof(buffer)-strlen(buffer)-1);
+			strncat(buffer, " ", sizeof(buffer)-strlen(buffer)-1);
+		}
+		_vz_logger(ctx, LOG_DEBUG, "run local task: %s", buffer);
+	}
+
+	if ((chpid = fork()) < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
+		goto cleanup_0;
+	} else if (chpid == 0) {
+		int fd;
+		/* allow C-c for child */
+		signal(SIGINT, SIG_DFL);
+		dup2(sock, STDOUT_FILENO);
+		dup2(sock, STDIN_FILENO);
+		if ((fd = open("/dev/null", O_WRONLY)) != -1) {
+			close(STDERR_FILENO);
+			dup2(fd, STDERR_FILENO);
+		}
+		close(sock);
+		execvp(argv[0], (char *const *)argv);
+		exit(VZS_ERR_SYSTEM);
+	}
+
+//	if ((rc = send(ctx, conn, sync_msg, strlen(sync_msg) + 1)))
+//		goto cleanup_4;
+
+	while ((pid = waitpid(chpid, &status, 0)) == -1)
+		if (errno != EINTR)
+			break;
+	if (pid < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
+		goto cleanup_0;
+	}
+	rc = _vzs_check_exit_status(ctx, (char *)argv[0], status);
+
+cleanup_0:
+	close(sock);
+
+	return rc;
 }
 
 static int recv_data(
@@ -302,6 +397,143 @@ static int recv_data(
 		void *conn, 
 		char * const *argv)
 {
-	return 0;
+	int rc = 0;
+	struct sock_data *data = (struct sock_data *)ctx->data;
+//	struct sock_conn *cn = (struct sock_conn *)conn;
+	int srv_sock, cli_sock;
+	struct sockaddr srv_addr, cli_addr;
+	socklen_t srv_addr_len, cli_addr_len;
+	char buffer[BUFSIZ];
+	fd_set fds;
+	struct timeval tv;
+	pid_t pid, chpid;
+	int status;
+
+	if ((srv_sock = socket(data->domain, data->type, data->protocol)) == -1)
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "socket() : %m");
+
+	_vz_set_nonblock(srv_sock);
+
+	/* will listen on random free port with 
+	   the local address set to INADDR_ANY */
+/* TODO: PF_UNIX ? */
+	if (listen(srv_sock, SOMAXCONN)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "listen() : %m");
+		goto cleanup_0;
+	}
+	
+	srv_addr_len = sizeof(struct sockaddr);
+	if (getsockname(srv_sock, &srv_addr, &srv_addr_len)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "getsockname() : %m");
+		goto cleanup_0;
+	}
+	switch (data->domain) {
+	case PF_INET:
+	{
+		/* send port number to client */
+		snprintf(buffer, sizeof(buffer), "%d", 
+			ntohs(((struct sockaddr_in *)&srv_addr)->sin_port));
+		if ((rc = _send(ctx, conn, buffer, strlen(buffer) + 1)))
+			goto cleanup_0;
+		break;
+	}
+	default:
+	{
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "can't receive data for "
+			"this communication domain (%d)", data->domain);
+		goto cleanup_0;
+	}
+	}
+#if 0
+	/* wait and check reply */
+	if ((rc = vzsock_recv_str(ctx, cn, buffer, sizeof(buffer)))) {
+		_vz_error(ctx, rc, "vzsock_recv_str() return %d", rc);
+		goto cleanup_0;
+	}
+	if (strcmp(buffer, VZS_ACK_MSG)) {
+		rc = _vz_error(ctx, VZS_ERR_CONN_BROKEN, 
+			"recv data: invalid reply from client (%s)", buffer);
+		goto cleanup_0;
+	}
+#endif
+	/* wait connect */
+	while(1) {
+		cli_addr_len = sizeof(cli_addr);
+		if ((cli_sock = accept(srv_sock, &cli_addr, &cli_addr_len)) >= 0)
+			break;
+		if (errno == EINTR) {
+			continue;
+		} else if ((errno != EAGAIN) && (errno != EWOULDBLOCK)) {
+			rc = _vz_error(ctx, VZS_ERR_SYSTEM, "accept() : %m");
+			goto cleanup_0;
+		}
+
+		do {
+			FD_ZERO(&fds);
+			FD_SET(srv_sock, &fds);
+			tv.tv_sec = ctx->tmo;
+			tv.tv_usec = 0;
+			rc = select(srv_sock + 1, &fds, NULL, NULL, &tv);
+			if (rc == 0) {
+				rc = _vz_error(ctx, VZS_ERR_TIMEOUT, 
+					"timeout (%d sec)", ctx->tmo);
+				goto cleanup_0;
+			} else if (rc <= 0) {
+				rc = _vz_error(ctx, VZS_ERR_CONN_BROKEN, 
+					"select() : %m");
+				goto cleanup_0;
+			}
+		} while (!FD_ISSET(srv_sock, &fds));
+	}
+
+	/* run writer */
+	if (ctx->debug) {
+		int i;
+		buffer[0] = '\0';
+		for (i = 0; argv[i]; i++) {
+			strncat(buffer, argv[i], sizeof(buffer)-strlen(buffer)-1);
+			strncat(buffer, " ", sizeof(buffer)-strlen(buffer)-1);
+		}
+		_vz_logger(ctx, LOG_DEBUG, "run local task: %s", buffer);
+	}
+
+	if ((chpid = fork()) < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
+		goto cleanup_1;
+	} else if (chpid == 0) {
+		int fd;
+		/* allow C-c for child */
+		signal(SIGINT, SIG_DFL);
+		dup2(cli_sock, STDOUT_FILENO);
+		dup2(cli_sock, STDIN_FILENO);
+/* TODO: to log stderr */
+		if ((fd = open("/dev/null", O_WRONLY)) != -1) {
+			close(STDERR_FILENO);
+			dup2(fd, STDERR_FILENO);
+		}
+		close(cli_sock);
+		close(srv_sock);
+		execvp(argv[0], (char *const *)argv);
+		exit(VZS_ERR_SYSTEM);
+	}
+// to send sync message ?
+//	if ((rc = send(ctx, conn, sync_msg, strlen(sync_msg) + 1)))
+//		goto cleanup_4;
+
+	while ((pid = waitpid(chpid, &status, 0)) == -1)
+		if (errno != EINTR)
+			break;
+	if (pid < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
+		goto cleanup_1;
+	}
+	rc = _vzs_check_exit_status(ctx, (char *)argv[0], status);
+
+cleanup_1:
+	close(cli_sock);
+cleanup_0:
+	close(srv_sock);
+
+	return rc;
 }
 

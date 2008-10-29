@@ -8,6 +8,7 @@
 #define __VZSOCK_H__
 
 #define VZS_SYNC_MSG "vzsock_sync"
+#define VZS_ACK_MSG "vzsock_ack"
 
 #ifdef __cplusplus
 extern "C" {
