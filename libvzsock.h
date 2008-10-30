@@ -52,10 +52,8 @@ struct vzsock_ctx {
 #define VZSOCK_DATA_CRTFILE	9 /* certificate file name */
 #define VZSOCK_DATA_KEYFILE	10 /* private key file name */
 #define VZSOCK_DATA_CIPHERS	11 /* ciphers list */
-#define VZSOCK_DATA_MODE	12 /* server or client */
-#define VZSOCK_MODE_CLIENT	0
-#define VZSOCK_MODE_SERVER	1
-
+#define VZSOCK_DATA_CAFILE	12 /* CA certificate file */
+#define VZSOCK_DATA_CAPATH	13 /* CA certificate path */
  
 /* errors code */
 #define VZS_ERR_SYSTEM		1
@@ -64,6 +62,7 @@ struct vzsock_ctx {
 #define VZS_ERR_TIMEOUT		4 /* timeout exceeded */
 #define VZS_ERR_CONN_BROKEN	5
 #define VZS_ERR_TOOLONG		6 /* too long message */
+#define VZS_ERR_SSL		7 /* SSL error */
 
 #ifdef __cplusplus
 extern "C" {

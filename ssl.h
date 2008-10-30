@@ -30,11 +30,11 @@ struct ssl_data {
 	int protocol;
 	struct sockaddr *addr;
 	socklen_t addr_len;
-	int mode; /* server or client */
-	int sock; /* listen socket */
 	SSL_CTX * ctx;
 	char crtfile[PATH_MAX + 1];
 	char keyfile[PATH_MAX + 1];
+	char CAfile[PATH_MAX + 1];
+	char CApath[PATH_MAX + 1];
 	char ciphers[BUFSIZ+1];
 //	X509 *cert;
 };
