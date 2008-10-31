@@ -206,13 +206,7 @@ static int test_conn(struct vzsock_ctx *ctx)
 		goto cleanup_0;
 	}
 
-	if (ctx->debug) {
-		char buffer[BUFSIZ+1];
-		buffer[0] = '\0';
-		_vzs_string_list_to_buf(&ssh_argl, buffer, sizeof(buffer));
-		_vz_logger(ctx, LOG_DEBUG, 
-			"establish test ssh channel: %s", buffer);
-	}
+	_vzs_show_args(ctx, "establish test ssh channel: ", ssh_argv);
 
 	snprintf(tmpfile, sizeof(tmpfile), "%s/tmpfile.XXXXXX", ctx->tmpdir);
 	if ((td = mkstemp(tmpfile)) == -1) {
@@ -396,13 +390,7 @@ static int open_conn(struct vzsock_ctx *ctx, void *arg, void **conn)
 		goto cleanup_0;
 	}
 
-	if (ctx->debug) {
-		char buffer[BUFSIZ+1];
-		buffer[0] = '\0';
-		_vzs_string_list_to_buf(&ssh_argl, buffer, sizeof(buffer));
-		_vz_logger(ctx, LOG_DEBUG, 
-			"establish test ssh channel: %s", buffer);
-	}
+	_vzs_show_args(ctx, "establish ssh channel: ", ssh_argv);
 
 	/* if password is needs, create askpass file */
 	if ((rc = generate_askpass(ctx, cn->askfile, sizeof(cn->askfile))))
@@ -590,7 +578,6 @@ static int _remote_rcopy(
 	char **ssh_argv;
 	struct ssh_data *data = (struct ssh_data *)ctx->data;
 	int i;
-	char buffer[BUFSIZ];
 
 	_vzs_string_list_init(&ssh_argl);
 
@@ -621,12 +608,7 @@ static int _remote_rcopy(
 		goto cleanup_1;
 	}
 
-	if (ctx->debug) {
-		buffer[0] = '\0';
-		_vzs_string_list_to_buf(&ssh_argl, buffer, sizeof(buffer));
-		_vz_logger(ctx, LOG_DEBUG, 
-			"establish ssh channel: %s", buffer);
-	}
+	 _vzs_show_args(ctx, "establish ssh channel: ", ssh_argv);
 
 	ssh_pid = fork();
 	if (ssh_pid < 0) {
@@ -664,14 +646,7 @@ static int _remote_rcopy(
 		goto cleanup_3;
 	}
 
-	if (ctx->debug) {
-		buffer[0] = '\0';
-		for (i = 0; task_argv[i]; i++) {
-			strncat(buffer, task_argv[i], sizeof(buffer)-strlen(buffer)-1);
-			strncat(buffer, " ", sizeof(buffer)-strlen(buffer)-1);
-		}
-		_vz_logger(ctx, LOG_DEBUG, "run local task: %s", buffer);
-	}
+	 _vzs_show_args(ctx, "run local task", task_argv);
 
 	task_pid = fork();
 	if (task_pid < 0) {

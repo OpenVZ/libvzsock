@@ -506,4 +506,22 @@ int _vzs_check_exit_status(struct vzsock_ctx *ctx, char *task, int status)
 	return 0;
 }
 
+void _vzs_show_args(
+		struct vzsock_ctx *ctx, 
+		const char *title, 
+		char * const *argv)
+{
+	char buffer[BUFSIZ];
+	int i;
+
+	if (!ctx->debug)
+		return;
+
+	strncpy(buffer, title, sizeof(buffer));
+	for (i = 0; argv[i]; i++) {
+		strncat(buffer, argv[i], sizeof(buffer)-strlen(buffer)-1);
+		strncat(buffer, " ", sizeof(buffer)-strlen(buffer)-1);
+	}
+	_vz_logger(ctx, LOG_DEBUG, "execute : %s", buffer);
+}
 

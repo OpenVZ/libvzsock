@@ -22,6 +22,7 @@
 
 #include "ssl.h"
 #include "util.h"
+#include "ssl_util.h"
 
 static int open_ctx(struct vzsock_ctx *ctx);
 static void close_ctx(struct vzsock_ctx *ctx);
@@ -43,6 +44,14 @@ static int recv_str(
 		char separator, 
 		char *data, 
 		size_t size);
+static int send_data(
+		struct vzsock_ctx *ctx, 
+		void *conn,
+		char * const *argv);
+static int recv_data(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		char * const *argv);
 
 int _vzs_ssl_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 {
@@ -77,73 +86,8 @@ int _vzs_ssl_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->set_conn = set_conn;
 	handlers->send = _send;
 	handlers->recv_str = recv_str;
-/*
 	handlers->send_data = send_data;
 	handlers->recv_data = recv_data;
-
-*/
-	return 0;
-}
-
-/* recursive dump of the error stack */
-static void ssl_error_stack(struct vzsock_ctx *ctx)
-{
-	unsigned long err;
-	char buffer[SSL_ERR_STRING_MAXLEN];
-
-	err = ERR_get_error();
-	if (err == 0)
-		return;
-	ssl_error_stack(ctx);
-	ERR_error_string_n(err, buffer, sizeof(buffer));
-	_vz_logger(ctx, LOG_ERR, "SSL error stack: %lu : %s", err, buffer);
-}
-
-static int ssl_error(struct vzsock_ctx *ctx, int rc, const char *title)
-{
-	char buffer[SSL_ERR_STRING_MAXLEN];
-	ERR_error_string_n(ERR_get_error(), buffer, sizeof(buffer));
-	ssl_error_stack(ctx);
-	return _vz_error(ctx, rc, "%s: %s", title, buffer);
-}
-
-static int ssl_select(
-		struct vzsock_ctx *ctx, 
-		int sock, 
-		int err, 
-		int silent)
-{
-	int rc;
-	fd_set fds;
-	struct timeval tv;
-
-	do {
-		FD_ZERO(&fds);
-		FD_SET(sock, &fds);
-		tv.tv_sec = ctx->tmo;
-		tv.tv_usec = 0;
-		/* for SSL_ERROR_WANT_CONNECT and SSL_ERROR_WANT_ACCEPT
-		   "select() or poll() for writing on the socket file 
-		   descriptor can be used." - SSL_get_error man page */
-		if (err == SSL_ERROR_WANT_READ)
-			rc = select(sock + 1, &fds, NULL, NULL, &tv);
-		else
-			rc = select(sock + 1, NULL, &fds, NULL, &tv);
-		if (rc == 0) {
-			if (silent)
-				syslog(LOG_ERR, "timeout (%ld sec)", ctx->tmo);
-			else
-				_vz_logger(ctx, LOG_ERR, 
-					"timeout (%d sec)", ctx->tmo);
-			return VZS_ERR_TIMEOUT;
-		} else if (rc <= 0) {
-			if (silent)
-				syslog(LOG_ERR, "select() : %m");
-			else
-				_vz_logger(ctx, LOG_ERR, "select() : %m");
-			return VZS_ERR_CONN_BROKEN;
-		}
-	} while (!FD_ISSET(sock, &fds));
 
 	return 0;
 }
@@ -472,39 +416,13 @@ cleanup_0:
 
 static int close_conn(struct vzsock_ctx *ctx, void *conn)
 {
-	int rc = 0;
-	int sslrc, err;
 	struct ssl_conn *cn = (struct ssl_conn *)conn;
 
 	if (cn->ssl == NULL)
 		/* already closed */
 		return 0;
 
-	while (1) {
-		if ((sslrc = SSL_shutdown(cn->ssl)) > 0)
-			break;
-		err = SSL_get_error(cn->ssl, sslrc);
-		if (err == SSL_ERROR_SYSCALL)
-		{
-			if (sslrc == 0)
-				rc = _vz_error(ctx, VZS_ERR_CONN_BROKEN,
-					"SSL_accept() : unexpected EOF"); 
-			else if (errno == EINTR)
-				continue;
-			else
-				rc = _vz_error(ctx, VZS_ERR_CONN_BROKEN,
-					"SSL_accept() : %m");
-			break;
-		}
-		else if ((err != SSL_ERROR_WANT_WRITE) && \
-			(err != SSL_ERROR_WANT_READ))
-		{
-			rc = ssl_error(ctx, VZS_ERR_SSL, "SSL_shutdown()");
-			break;
-		}
-		if ((rc = ssl_select(ctx, cn->sock, err, 0)))
-			break;
-	}
+	ssl_shutdown(ctx, cn->ssl, cn->sock);
 
 	while (close(cn->sock) == -1)
 		if (errno != EINTR)
@@ -514,7 +432,7 @@ static int close_conn(struct vzsock_ctx *ctx, void *conn)
 	cn->ssl = NULL;
 	cn->sock = -1;
 
-	return sslrc;
+	return 0;
 }
 
 static int set_conn(struct vzsock_ctx *ctx, void *conn, 
@@ -523,73 +441,6 @@ static int set_conn(struct vzsock_ctx *ctx, void *conn,
 //	struct ssl_conn *cn = (struct ssl_conn *)conn;
 
 	return 0;
-}
-
-/* Write <size> bytes of <data> in non-blocking <ssl> connection.
-   In <silent> mode we can't use _vz_error()/_vz_logger() in this function 
-   because on server side _vz_error() can call this function to send error 
-   message to client side. */
-static int ssl_write(
-		struct vzsock_ctx *ctx, 
-		void *conn, 
-		const char * data, 
-		size_t size,
-		int silent)
-{
-	int rc = 0;
-	size_t sent = 0;
-	int err;
-	struct ssl_conn *cn = (struct ssl_conn *)conn;
-
-	if (size == 0)
-		return 0;
-
-	while (1) {
-		rc = SSL_write(cn->ssl, data + sent, 
-			(unsigned int)(size - sent));
-		if (rc > 0) {
-			sent += rc;
-			if (sent >= size)
-				return 0;
-			continue;
-		}
-		err = SSL_get_error(cn->ssl, rc);
-		if (err == SSL_ERROR_SYSCALL)
-		{
-			if (rc == 0) {
-				if (silent)
-					syslog(LOG_ERR,
-						"SSL_write() : unexpected EOF");
-				else
-					_vz_logger(ctx, LOG_ERR, 
-						"SSL_write() : unexpected EOF");
-				return VZS_ERR_CONN_BROKEN; 
-			} else if (errno == EINTR) {
-				continue;
-			} else {
-				if (silent)
-					syslog(LOG_ERR, "SSL_write() : %m");
-				else
-					_vz_logger(ctx, LOG_ERR, 
-						"SSL_write() : %m");
-				return VZS_ERR_CONN_BROKEN; 
-			}
-		}
-		else if ((err != SSL_ERROR_WANT_WRITE) && \
-			(err != SSL_ERROR_WANT_READ)) 
-		{
-			if (silent)
-				syslog(LOG_ERR, "SSL_write() error");
-			else
-				ssl_error(ctx, VZS_ERR_CONN_BROKEN, 
-					"SSL_write()");
-			return VZS_ERR_CONN_BROKEN; 
-		}
-		if ((rc = ssl_select(ctx, cn->sock, err, silent)))
-			break;
-	}
-
-	return rc;
 }
 
 /* send data via ssl connection */
@@ -655,3 +506,383 @@ static int recv_str(
 
 	return rc;
 }
+
+/* run argv[], and transmit data from argv[0] to ssl connection and vice versa */
+static int send_data(
+		struct vzsock_ctx *ctx, 
+		void *conn,
+		char * const *argv)
+{
+	int rc = 0;
+	int sslrc, sslerr;
+	int in[2], out[2], err[2];
+	int sock;
+	SSL *ssl;
+	pid_t pid, chpid;
+	int status;
+//	struct ssl_conn *cn = (struct ssl_conn *)conn;
+	struct ssl_data *data = (struct ssl_data *)ctx->data;
+	char reply[BUFSIZ];
+	struct sockaddr addr;
+	socklen_t addr_len;
+
+	if (data->addr == NULL)
+		return _vz_error(ctx, VZS_ERR_BAD_PARAM, "address not defined");
+
+	/* read reply with connection params (port) from server */
+	if ((rc = vzsock_read_srv_reply(ctx, conn, reply, sizeof(reply))))
+		return rc;
+
+	if (data->domain == PF_INET) {
+		/* read port from server reply */
+		struct sockaddr_in *saddr = (struct sockaddr_in *)&addr;
+		int port;
+		char *ptr;
+		port = strtol(reply, &ptr, 10);
+		if (*ptr != '\0')
+			return _vz_error(ctx, VZS_ERR_CONN_BROKEN, 
+				"send data : invalid server port number : %s",
+				 reply);
+		addr_len = sizeof(struct sockaddr_in);
+		memcpy(saddr, data->addr, addr_len);
+		saddr->sin_port = htons(port);
+	} else {
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "can't send data for "
+			"this communication domain (%d)", data->domain);
+	}
+
+	if ((sock = socket(data->domain, data->type, data->protocol)) == -1)
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "socket() : %m");
+
+	if (connect(sock, &addr, addr_len) == -1) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "connect() : %m");
+		goto cleanup_0;
+	}
+
+	if (_vz_set_nonblock(sock)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fcntl() : %m");
+		goto cleanup_0;
+	}
+
+	/* Create SSL obj */
+	if ((ssl = SSL_new(data->ctx)) == NULL) {
+		rc = ssl_error(ctx, VZS_ERR_SSL, "SSL_new()");
+		goto cleanup_0;
+	}
+	SSL_set_fd(ssl, sock);
+	SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
+
+	while (1) {
+		if ((sslrc = SSL_connect(ssl)) > 0)
+			break;
+		sslerr = SSL_get_error(ssl, sslrc);
+		if (sslerr == SSL_ERROR_SYSCALL)
+		{
+			if (sslrc == 0)
+				rc = _vz_error(ctx, VZS_ERR_CONN_BROKEN,
+					"SSL_connect() : unexpected EOF"); 
+			else if (errno == EINTR)
+				continue;
+			else
+				rc = _vz_error(ctx, VZS_ERR_CONN_BROKEN,
+					"SSL_connect() : %m");
+			goto cleanup_1;
+		}
+		else if ((sslerr != SSL_ERROR_WANT_WRITE) && \
+			(sslerr != SSL_ERROR_WANT_READ) && \
+			(sslerr != SSL_ERROR_WANT_CONNECT))
+		{
+			rc = ssl_error(ctx, VZS_ERR_SSL, "SSL_connect()");
+			goto cleanup_1;
+		}
+		if ((rc = ssl_select(ctx, sock, sslerr, 0)))
+			goto cleanup_1;
+	}
+
+	_vzs_show_args(ctx, "run local task", argv);
+
+
+	if ((pipe(in) < 0) || (pipe(out) < 0) || (pipe(err) < 0)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "pipe() : %m");
+		goto cleanup_2;
+	}
+
+#if 0
+	/* and wait reply */
+	if ((rc = ch_read_retcode(ssl_recv_str, conn)))
+		goto cleanup_4;
+#endif
+
+	/* run target task */
+	if ((chpid = fork()) < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
+		goto cleanup_4;
+	} else if (chpid == 0) {
+		signal(SIGTERM, SIG_DFL);
+		close(in[1]); close(out[0]); close(err[0]);
+		dup2(in[0], STDIN_FILENO);
+		dup2(out[1], STDOUT_FILENO);
+		dup2(err[1], STDERR_FILENO);
+		close(in[0]); close(out[1]); close(err[1]);
+		execvp(argv[0], argv);
+		exit(-VZS_ERR_SYSTEM);
+	}
+	close(in[0]); close(out[1]); close(err[1]);
+
+	while ((pid = waitpid(chpid, &status, WNOHANG)) == -1)
+		if (errno != EINTR)
+			break;
+
+	if (pid < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "waitpid() : %m");
+		goto cleanup_3;
+	} else if (pid == chpid) {
+		rc = _vzs_check_exit_status(ctx, (char *)argv[0], status);
+		goto cleanup_3;
+	}
+
+	if ((rc = ssl_redirect(ctx, ssl, in[1], out[0], err[0])))
+		goto cleanup_3;
+
+	while ((pid = waitpid(chpid, &status, 0)) == -1)
+		if (errno != EINTR)
+			break;
+
+	close(in[1]); close(out[0]); close(err[0]);
+
+	if (pid < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "waitpid() : %m");
+		goto cleanup_2;
+	}
+
+	if ((rc = _vzs_check_exit_status(ctx, (char *)argv[0], status)))
+		goto cleanup_2;
+
+#if 0
+	/* last synchronization */
+	if ((rc = ssl_send(conn, cmd, strlen(cmd) + 1)))
+		goto cleanup_2;
+
+	if ((rc = ch_read_retcode(ssl_recv_str, conn)))
+		goto cleanup_2;
+#endif
+
+	goto cleanup_2;
+cleanup_4:
+	close(in[0]); close(out[1]); close(err[1]);
+cleanup_3:
+	close(in[1]); close(out[0]); close(err[0]);
+cleanup_2:
+	ssl_shutdown(ctx, ssl, sock);
+cleanup_1:
+	SSL_free(ssl);
+cleanup_0:
+	close(sock);
+
+	return rc;
+}
+
+static int recv_data(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		char * const *argv)
+{
+	int rc = 0;
+	int sslrc, sslerr;
+	struct ssl_data *data = (struct ssl_data *)ctx->data;
+	int srv_sock, cli_sock;
+	struct sockaddr srv_addr, cli_addr;
+	socklen_t srv_addr_len, cli_addr_len;
+	char buffer[BUFSIZ];
+	fd_set fds;
+	struct timeval tv;
+	pid_t pid, chpid;
+	int status;
+	SSL *ssl;
+	int in[2], out[2], err[2];
+
+	if ((srv_sock = socket(data->domain, data->type, data->protocol)) == -1)
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "socket() : %m");
+
+	_vz_set_nonblock(srv_sock);
+
+	/* will listen on random free port with 
+	   the local address set to INADDR_ANY */
+/* TODO: PF_UNIX ? */
+	if (listen(srv_sock, SOMAXCONN)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "listen() : %m");
+		goto cleanup_0;
+	}
+	
+	srv_addr_len = sizeof(struct sockaddr);
+	if (getsockname(srv_sock, &srv_addr, &srv_addr_len)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "getsockname() : %m");
+		goto cleanup_0;
+	}
+	if (data->domain == PF_INET) {
+		/* send port number to client */
+		snprintf(buffer, sizeof(buffer), "%d", 
+			ntohs(((struct sockaddr_in *)&srv_addr)->sin_port));
+		if ((rc = _send(ctx, conn, buffer, strlen(buffer) + 1)))
+			goto cleanup_0;
+	} else {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "can't receive data for "
+			"this communication domain (%d)", data->domain);
+		goto cleanup_0;
+	}
+#if 0
+	/* wait and check reply */
+	if ((rc = vzsock_recv_str(ctx, cn, buffer, sizeof(buffer)))) {
+		_vz_error(ctx, rc, "vzsock_recv_str() return %d", rc);
+		goto cleanup_0;
+	}
+	if (strcmp(buffer, VZS_ACK_MSG)) {
+		rc = _vz_error(ctx, VZS_ERR_CONN_BROKEN, 
+			"recv data: invalid reply from client (%s)", buffer);
+		goto cleanup_0;
+	}
+#endif
+	/* wait connection during timeout */
+	while(1) {
+		cli_addr_len = sizeof(cli_addr);
+		if ((cli_sock = accept(srv_sock, &cli_addr, &cli_addr_len)) >= 0)
+			break;
+		if (errno == EINTR) {
+			continue;
+		} else if ((errno != EAGAIN) && (errno != EWOULDBLOCK)) {
+			rc = _vz_error(ctx, VZS_ERR_SYSTEM, "accept() : %m");
+			goto cleanup_0;
+		}
+
+		do {
+			FD_ZERO(&fds);
+			FD_SET(srv_sock, &fds);
+			tv.tv_sec = ctx->tmo;
+			tv.tv_usec = 0;
+			rc = select(srv_sock + 1, &fds, NULL, NULL, &tv);
+			if (rc == 0) {
+				rc = _vz_error(ctx, VZS_ERR_TIMEOUT, 
+					"timeout (%d sec)", ctx->tmo);
+				goto cleanup_0;
+			} else if (rc <= 0) {
+				rc = _vz_error(ctx, VZS_ERR_CONN_BROKEN, 
+					"select() : %m");
+				goto cleanup_0;
+			}
+		} while (!FD_ISSET(srv_sock, &fds));
+	}
+
+	/* Create SSL obj */
+	if ((ssl = SSL_new(data->ctx)) == NULL) {
+		rc = ssl_error(ctx, VZS_ERR_SSL, "SSL_new()");
+		goto cleanup_1;
+	}
+	SSL_set_fd(ssl, cli_sock);
+	SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
+
+	while (1) {
+		if ((sslrc = SSL_accept(ssl)) > 0)
+			break;
+		sslerr = SSL_get_error(ssl, sslrc);
+		if (sslerr == SSL_ERROR_SYSCALL)
+		{
+			if (sslrc == 0)
+				rc = _vz_error(ctx, VZS_ERR_CONN_BROKEN,
+					"SSL_accept() : unexpected EOF"); 
+			else if (errno == EINTR)
+				continue;
+			else
+				rc = _vz_error(ctx, VZS_ERR_CONN_BROKEN,
+					"SSL_accept() : %m");
+			goto cleanup_2;
+		}
+		else if ((sslerr != SSL_ERROR_WANT_WRITE) && \
+			(sslerr != SSL_ERROR_WANT_READ) && \
+			(sslerr != SSL_ERROR_WANT_ACCEPT))
+		{
+			rc = ssl_error(ctx, VZS_ERR_SSL, "SSL_accept()");
+			goto cleanup_2;
+		}
+		if ((rc = ssl_select(ctx, cli_sock, sslerr, 0)))
+			goto cleanup_2;
+	}
+
+	if ((pipe(in) < 0) || (pipe(out) < 0) || (pipe(err) < 0)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "pipe() : %m");
+		goto cleanup_3;
+	}
+
+#if 0
+	/* send readiness reply */
+	if ((rc = ssl_send(conn, reply, strlen(reply) + 1)))
+		goto cleanup_5;
+#endif
+
+	_vzs_show_args(ctx, "run local task", argv);
+
+	if ((chpid = fork()) < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
+		goto cleanup_5;
+	} else if (chpid == 0) {
+		signal(SIGTERM, SIG_DFL);
+		close(in[1]); close(out[0]); close(err[0]);
+		dup2(in[0], STDIN_FILENO);
+		dup2(out[1], STDOUT_FILENO);
+		dup2(err[1], STDERR_FILENO);
+		close(in[0]); close(out[1]); close(err[1]);
+		execvp(argv[0], argv);
+		exit(-VZS_ERR_SYSTEM);
+	}
+	close(in[0]); close(out[1]); close(err[1]);
+
+	while ((pid = waitpid(chpid, &status, WNOHANG)) == -1)
+		if (errno != EINTR)
+			break;
+
+	if (pid < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "waitpid() : %m");
+		goto cleanup_4;
+	} else if (pid == chpid) {
+		rc = _vzs_check_exit_status(ctx, (char *)argv[0], status);
+		goto cleanup_4;
+	}
+
+	if ((rc = ssl_redirect(ctx, ssl, in[1], out[0], err[0])))
+		goto cleanup_4;
+
+	while ((pid = waitpid(chpid, &status, 0)) == -1)
+		if (errno != EINTR)
+			break;
+	close(in[1]); close(out[0]); close(err[0]);
+
+	if (pid < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "waitpid() : %m");
+		goto cleanup_3;
+	}
+
+	if ((rc = _vzs_check_exit_status(ctx, (char *)argv[0], status)))
+		goto cleanup_3;
+/*
+	if ((rc = ssl_recv_str(conn, '\0', buffer, sizeof(buffer))))
+		goto cleanup_3;
+
+	if ((rc = ssl_send(conn, reply, strlen(reply) + 1)))
+		goto cleanup_3;
+*/
+	goto cleanup_3;
+cleanup_5:
+	close(in[0]); close(out[1]); close(err[1]);
+cleanup_4:
+	close(in[1]); close(out[0]); close(err[0]);
+cleanup_3:
+	ssl_shutdown(ctx, ssl, cli_sock);
+cleanup_2:
+	SSL_free(ssl);
+cleanup_1:
+	close(cli_sock);
+cleanup_0:
+	close(srv_sock);
+
+	return rc;
+}
+

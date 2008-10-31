@@ -308,15 +308,12 @@ static int send_data(
 	if (data->addr == NULL)
 		return _vz_error(ctx, VZS_ERR_BAD_PARAM, "address not defined");
 
-	/* read remote command from server */
+	/* read reply with connection params (port) from server */
 	if ((rc = vzsock_read_srv_reply(ctx, conn, reply, sizeof(reply))))
 		return rc;
 
-	/* parse reply*/
-	switch (data->domain) {
-	case PF_INET:
-	{
-		/* send port number to client */
+	if (data->domain == PF_INET) {
+		/* read port from server reply */
 		struct sockaddr_in *saddr = (struct sockaddr_in *)&addr;
 		int port;
 		char *ptr;
@@ -328,13 +325,9 @@ static int send_data(
 		addr_len = sizeof(struct sockaddr_in);
 		memcpy(saddr, data->addr, addr_len);
 		saddr->sin_port = htons(port);
-		break;
-	}
-	default:
-	{
+	} else {
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "can't send data for "
 			"this communication domain (%d)", data->domain);
-	}
 	}
 
 	if ((sock = socket(data->domain, data->type, data->protocol)) == -1)
@@ -345,16 +338,7 @@ static int send_data(
 		goto cleanup_0;
 	}
 
-	if (ctx->debug) {
-		char buffer[BUFSIZ];
-		int i;
-		buffer[0] = '\0';
-		for (i = 0; argv[i]; i++) {
-			strncat(buffer, argv[i], sizeof(buffer)-strlen(buffer)-1);
-			strncat(buffer, " ", sizeof(buffer)-strlen(buffer)-1);
-		}
-		_vz_logger(ctx, LOG_DEBUG, "run local task: %s", buffer);
-	}
+	_vzs_show_args(ctx, "run local task", argv);
 
 	if ((chpid = fork()) < 0) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
@@ -399,7 +383,6 @@ static int recv_data(
 {
 	int rc = 0;
 	struct sock_data *data = (struct sock_data *)ctx->data;
-//	struct sock_conn *cn = (struct sock_conn *)conn;
 	int srv_sock, cli_sock;
 	struct sockaddr srv_addr, cli_addr;
 	socklen_t srv_addr_len, cli_addr_len;
@@ -427,22 +410,16 @@ static int recv_data(
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "getsockname() : %m");
 		goto cleanup_0;
 	}
-	switch (data->domain) {
-	case PF_INET:
-	{
+	if (data->domain == PF_INET) {
 		/* send port number to client */
 		snprintf(buffer, sizeof(buffer), "%d", 
 			ntohs(((struct sockaddr_in *)&srv_addr)->sin_port));
 		if ((rc = _send(ctx, conn, buffer, strlen(buffer) + 1)))
 			goto cleanup_0;
-		break;
-	}
-	default:
-	{
+	} else {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "can't receive data for "
 			"this communication domain (%d)", data->domain);
 		goto cleanup_0;
-	}
 	}
 #if 0
 	/* wait and check reply */
@@ -456,7 +433,7 @@ static int recv_data(
 		goto cleanup_0;
 	}
 #endif
-	/* wait connect */
+	/* wait connection during timeout */
 	while(1) {
 		cli_addr_len = sizeof(cli_addr);
 		if ((cli_sock = accept(srv_sock, &cli_addr, &cli_addr_len)) >= 0)
@@ -486,16 +463,7 @@ static int recv_data(
 		} while (!FD_ISSET(srv_sock, &fds));
 	}
 
-	/* run writer */
-	if (ctx->debug) {
-		int i;
-		buffer[0] = '\0';
-		for (i = 0; argv[i]; i++) {
-			strncat(buffer, argv[i], sizeof(buffer)-strlen(buffer)-1);
-			strncat(buffer, " ", sizeof(buffer)-strlen(buffer)-1);
-		}
-		_vz_logger(ctx, LOG_DEBUG, "run local task: %s", buffer);
-	}
+	_vzs_show_args(ctx, "run local task", argv);
 
 	if ((chpid = fork()) < 0) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");

@@ -17,7 +17,7 @@ endif
 LIB_MAJOR = 1
 LIB_MINOR = 0.1
 
-OBJ = util.o fd.o ssh.o sock.o ssl.o vzsock.o
+OBJ = util.o fd.o ssh.o sock.o ssl_util.o ssl.o vzsock.o
 
 NAME = libvzsock
 LIB_FULL = $(NAME).so.$(LIB_MAJOR).$(LIB_MINOR)

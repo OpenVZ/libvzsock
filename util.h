@@ -144,6 +144,11 @@ int _vzs_recv_str(
 
 int _vzs_check_exit_status(struct vzsock_ctx *ctx, char *task, int status);
 
+void _vzs_show_args(
+		struct vzsock_ctx *ctx, 
+		const char *title, 
+		char * const *argv);
+
 #ifdef __cplusplus
 }
 #endif 
