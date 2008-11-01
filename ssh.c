@@ -516,7 +516,7 @@ static int send(
 {
 	struct ssh_conn *cn = (struct ssh_conn *)conn;
 
-	return _vzs_writefd(ctx, cn->out, data, size);
+	return _vzs_writefd(ctx, cn->out, data, size, 0);
 }
 
 /* 

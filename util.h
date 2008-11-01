@@ -44,6 +44,7 @@ int __vz_set_cloexec(int fd, int state);
 #define _vz_set_noncloexec(fd) __vz_set_cloexec(fd, 0)
 
 /* show message */
+int _vz_def_logger(int level, const char *fmt, ...);
 int _vz_logger(struct vzsock_ctx *ctx, int level, const char *fmt, ...);
 
 /* put error code and error message in ctx and show error message */
@@ -130,7 +131,12 @@ struct vzs_void_list_el * _vzs_void_list_remove(
 int _vzs_rmdir(struct vzsock_ctx *ctx, const char *dirname);
 
 /* Write <size> bytes of <data> in non-blocking descriptor <fd>. */
-int _vzs_writefd(struct vzsock_ctx *ctx, int fd, const char * data, size_t size);
+int _vzs_writefd(
+		struct vzsock_ctx *ctx, 
+		int fd, 
+		const char * data, 
+		size_t size,
+		int silent);
 /* 
   read from nonblocking descriptor <fd> string, separated by <separator>.
   will write '\0' on the end of string

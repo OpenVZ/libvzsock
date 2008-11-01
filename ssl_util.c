@@ -71,14 +71,15 @@ int ssl_select(
 			rc = select(sock + 1, NULL, &fds, NULL, &tv);
 		if (rc == 0) {
 			if (silent)
-				syslog(LOG_ERR, "timeout (%ld sec)", ctx->tmo);
+				_vz_def_logger(LOG_ERR, 
+					"timeout (%ld sec)", ctx->tmo);
 			else
 				_vz_logger(ctx, LOG_ERR, 
 					"timeout (%d sec)", ctx->tmo);
 			return VZS_ERR_TIMEOUT;
 		} else if (rc <= 0) {
 			if (silent)
-				syslog(LOG_ERR, "select() : %m");
+				_vz_def_logger(LOG_ERR, "select() : %m");
 			else
 				_vz_logger(ctx, LOG_ERR, "select() : %m");
 			return VZS_ERR_CONN_BROKEN;
@@ -155,7 +156,7 @@ int ssl_write(
 		{
 			if (rc == 0) {
 				if (silent)
-					syslog(LOG_ERR,
+					_vz_def_logger(LOG_ERR,
 						"SSL_write() : unexpected EOF");
 				else
 					_vz_logger(ctx, LOG_ERR, 
@@ -165,7 +166,8 @@ int ssl_write(
 				continue;
 			} else {
 				if (silent)
-					syslog(LOG_ERR, "SSL_write() : %m");
+					_vz_def_logger(LOG_ERR, 
+						"SSL_write() : %m");
 				else
 					_vz_logger(ctx, LOG_ERR, 
 						"SSL_write() : %m");
@@ -176,7 +178,7 @@ int ssl_write(
 			(err != SSL_ERROR_WANT_READ)) 
 		{
 			if (silent)
-				syslog(LOG_ERR, "SSL_write() error");
+				_vz_def_logger(LOG_ERR, "SSL_write() error");
 			else
 				ssl_error(ctx, VZS_ERR_CONN_BROKEN, 
 					"SSL_write()");

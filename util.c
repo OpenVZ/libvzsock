@@ -58,7 +58,7 @@ static int __vz_def_logger(int level, const char* fmt, va_list pvar)
 	return 0;
 }
 
-static int _vz_def_logger(int level, const char *fmt, ...)
+int _vz_def_logger(int level, const char *fmt, ...)
 {
 	va_list pvar;
 	va_start(pvar, fmt);
@@ -378,7 +378,12 @@ int _vzs_rmdir(struct vzsock_ctx *ctx, const char *dirname)
 /* Write <size> bytes of <data> in non-blocking descriptor <fd>.
    We can't use _vz_error()/_vz_logger() in this function because on server side 
    _vz_error() can call this function to send error message to client side. */ 
-int _vzs_writefd(struct vzsock_ctx *ctx, int fd, const char * data, size_t size)
+int _vzs_writefd(
+		struct vzsock_ctx *ctx, 
+		int fd, 
+		const char * data, 
+		size_t size,
+		int silent)
 {
 	int rc;
 	size_t sent;
@@ -400,7 +405,10 @@ int _vzs_writefd(struct vzsock_ctx *ctx, int fd, const char * data, size_t size)
 			if (errno == EAGAIN) {
 				break;
 			} else {
-				_vz_def_logger(LOG_ERR, "write() : %m");
+				if (silent)
+					_vz_def_logger(LOG_ERR, "write() : %m");
+				else
+					_vz_logger(ctx, LOG_ERR, "write() : %m"); 
 				return VZS_ERR_CONN_BROKEN;
 			}
 		}
@@ -413,7 +421,8 @@ int _vzs_writefd(struct vzsock_ctx *ctx, int fd, const char * data, size_t size)
 			tv.tv_usec = 0;
 			rc = select(fd + 1, NULL, &fds, NULL, &tv);
 			if (rc == 0) {
-				_vz_def_logger(LOG_ERR, "timeout expired (%d sec)", ctx->tmo);
+				_vz_def_logger(LOG_ERR, 
+					"timeout (%d sec)", ctx->tmo);
 				return VZS_ERR_TIMEOUT;
 			} else if (rc <= 0) {
 				_vz_def_logger(LOG_ERR, "select() : %m");
@@ -456,7 +465,8 @@ int _vzs_recv_str(
 				}
 				p++;
 				if (p >= data + size)
-					return VZS_ERR_TOOLONG;
+					return _vz_error(ctx, VZS_ERR_TOOLONG, 
+						"recv_str : too long message");
 				continue;
 			} else if (rc == 0) {
 				/* end of file */
@@ -467,7 +477,8 @@ int _vzs_recv_str(
 				/* wait next data */
 				break;
 			else
-				return VZS_ERR_CONN_BROKEN;
+				return _vz_error(ctx, VZS_ERR_CONN_BROKEN,
+					"recv_str : read() : %m");
 		}
 
 		/* wait next data in socket */
@@ -478,9 +489,11 @@ int _vzs_recv_str(
 			tv.tv_usec = 0;
 			rc = select(fd + 1, &fds, NULL, NULL, &tv);
 			if (rc == 0)
-				return VZS_ERR_TIMEOUT;
+				return _vz_error(ctx, VZS_ERR_TIMEOUT,
+					"recv_str : timeout (%d sec)", ctx->tmo);
 			else if (rc <= 0)
-				return VZS_ERR_CONN_BROKEN;
+				return _vz_error(ctx, VZS_ERR_CONN_BROKEN,
+					"recv_str : select() : %m");
 		} while (!FD_ISSET(fd, &fds));
 	}
 

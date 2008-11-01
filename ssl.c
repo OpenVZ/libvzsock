@@ -525,6 +525,8 @@ static int send_data(
 	char reply[BUFSIZ];
 	struct sockaddr addr;
 	socklen_t addr_len;
+	fd_set fds;
+	struct timeval tv;
 
 	if (data->addr == NULL)
 		return _vz_error(ctx, VZS_ERR_BAD_PARAM, "address not defined");
@@ -554,15 +556,40 @@ static int send_data(
 	if ((sock = socket(data->domain, data->type, data->protocol)) == -1)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "socket() : %m");
 
-	if (connect(sock, &addr, addr_len) == -1) {
-		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "connect() : %m");
-		goto cleanup_0;
-	}
-
 	if (_vz_set_nonblock(sock)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fcntl() : %m");
 		goto cleanup_0;
 	}
+
+	while(1) {
+		if (connect(sock, &addr, addr_len) == 0)
+			break;
+		if (errno == EINTR) {
+			continue;
+		} else if (errno != EINPROGRESS) {
+			rc = _vz_error(ctx, VZS_ERR_SYSTEM, "connect() : %m");
+			goto cleanup_0;
+		}
+
+		do {
+			FD_ZERO(&fds);
+			FD_SET(sock, &fds);
+			tv.tv_sec = ctx->tmo;
+			tv.tv_usec = 0;
+			/* writable event - see connect() man page */
+			rc = select(sock + 1, NULL, &fds, NULL, &tv);
+			if (rc == 0) {
+				rc = _vz_error(ctx, VZS_ERR_TIMEOUT, 
+					"timeout (%d sec)", ctx->tmo);
+				goto cleanup_0;
+			} else if (rc <= 0) {
+				rc = _vz_error(ctx, VZS_ERR_CONN_BROKEN, 
+					"select() : %m");
+				goto cleanup_0;
+			}
+		} while (!FD_ISSET(sock, &fds));
+	}
+
 
 	/* Create SSL obj */
 	if ((ssl = SSL_new(data->ctx)) == NULL) {
@@ -704,7 +731,10 @@ static int recv_data(
 	if ((srv_sock = socket(data->domain, data->type, data->protocol)) == -1)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "socket() : %m");
 
-	_vz_set_nonblock(srv_sock);
+	if (_vz_set_nonblock(srv_sock)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fcntl() : %m");
+		goto cleanup_0;
+	}
 
 	/* will listen on random free port with 
 	   the local address set to INADDR_ANY */
@@ -759,6 +789,7 @@ static int recv_data(
 			FD_SET(srv_sock, &fds);
 			tv.tv_sec = ctx->tmo;
 			tv.tv_usec = 0;
+			/* readable event - see accept() man page */
 			rc = select(srv_sock + 1, &fds, NULL, NULL, &tv);
 			if (rc == 0) {
 				rc = _vz_error(ctx, VZS_ERR_TIMEOUT, 

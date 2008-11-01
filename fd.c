@@ -143,7 +143,7 @@ static int _send(
 {
 	struct fd_conn *cn = (struct fd_conn *)conn;
 
-	return _vzs_writefd(ctx, cn->out, data, size);
+	return _vzs_writefd(ctx, cn->out, data, size, 0);
 }
 
 /* 
