@@ -163,7 +163,7 @@ int vzsock_open_conn(struct vzsock_ctx *ctx, void *data, void **conn)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
 	return 0;
 }
-
+/*
 int vzsock_wait_conn(struct vzsock_ctx *ctx, void **conn)
 {
 	int rc;
@@ -172,12 +172,11 @@ int vzsock_wait_conn(struct vzsock_ctx *ctx, void **conn)
 
 	if ((rc = handlers->wait_conn(ctx, conn)))
 		return rc;
-	/* and add into list */
 	if (_vzs_void_list_add(clist, *conn))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "memory alloc : %m");
 	return 0;
 }
-
+*/
 int vzsock_accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **conn)
 {
 	int rc;

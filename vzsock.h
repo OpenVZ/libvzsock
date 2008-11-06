@@ -26,7 +26,7 @@ struct vzs_handlers {
 	/* open new connection (connect) */
 	int (*open_conn)(struct vzsock_ctx *ctx, void *data, void **conn);
 	/* wait incoming connection (listen) */
-	int (*wait_conn)(struct vzsock_ctx *ctx, void **conn);
+//	int (*wait_conn)(struct vzsock_ctx *ctx, void **conn);
 	/* accept incoming connection (accept) */
 	int (*accept_conn)(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
 	/* close connection */

@@ -38,6 +38,8 @@ int ssl_redirect(
 		int out, 
 		int err); 
 
+int verify_callback(int ok, X509_STORE_CTX *ctx);
+
 #ifdef __cplusplus
 }
 #endif 

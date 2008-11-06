@@ -30,7 +30,7 @@ static void close_ctx(struct vzsock_ctx *ctx);
 static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size);
 
 static int open_conn(struct vzsock_ctx *ctx, void *data, void **conn);
-static int wait_conn(struct vzsock_ctx *ctx, void **conn);
+//static int wait_conn(struct vzsock_ctx *ctx, void **conn);
 static int accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **new_conn);
 static int close_conn(struct vzsock_ctx *ctx, void *conn);
 /* set connection parameter(s) */
@@ -72,7 +72,7 @@ int _vzs_ssh_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->close = close_ctx;
 	handlers->set = set_ctx;
 	handlers->open_conn = open_conn;
-	handlers->wait_conn = wait_conn;
+//	handlers->wait_conn = wait_conn;
 	handlers->accept_conn = accept_conn;
 	handlers->close_conn = close_conn;
 	handlers->set_conn = set_conn;
@@ -462,12 +462,12 @@ cleanup_0:
 
 	return rc;
 }
-
+/*
 static int wait_conn(struct vzsock_ctx *ctx, void **conn)
 {
 	return -1;
 }
-
+*/
 static int accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **new_conn)
 {
 	return -1;

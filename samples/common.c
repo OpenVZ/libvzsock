@@ -19,7 +19,7 @@ int logger(int level, const char *fmt, va_list pvar);
 }
 */
 
-int server(struct vzsock_ctx *ctx, void *conn)
+int server(struct vzsock_ctx *ctx, void *sock)
 {
 	int rc = 0;
 	char cmd[BUFSIZ];
@@ -34,6 +34,12 @@ int server(struct vzsock_ctx *ctx, void *conn)
 			path, 
 			NULL};
 	char *p;
+	void *conn;
+
+	if ((rc = vzsock_accept_conn(ctx, sock, &conn))) {
+		syslog(LOG_ERR, "vzsock_accept_conn() return %d", rc);
+		return rc;
+	}
 
 	/* read command from client */
 	if ((rc = vzsock_recv_str(ctx, conn, cmd, sizeof(cmd)))) {

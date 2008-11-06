@@ -11,6 +11,7 @@
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/x509.h>
 
 #include "libvzsock.h"
 #include "vzsock.h"

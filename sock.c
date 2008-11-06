@@ -25,7 +25,7 @@ static int open_ctx(struct vzsock_ctx *ctx);
 static void close_ctx(struct vzsock_ctx *ctx);
 static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size);
 static int _connect(struct vzsock_ctx *ctx, void *data, void **conn);
-static int _listen(struct vzsock_ctx *ctx, void **conn);
+//static int _listen(struct vzsock_ctx *ctx, void **conn);
 static int _accept(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
 static int close_conn(struct vzsock_ctx *ctx, void *conn);
 static int set_conn(struct vzsock_ctx *ctx, void *conn, 
@@ -71,7 +71,7 @@ int _vzs_sock_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->close = close_ctx;
 	handlers->set = set_ctx;
 	handlers->open_conn = _connect;
-	handlers->wait_conn = _listen;
+//	handlers->wait_conn = _listen;
 	handlers->accept_conn = _accept;
 	handlers->close_conn = close_conn;
 	handlers->set_conn = set_conn;
@@ -179,7 +179,7 @@ cleanup_0:
 	free((void *)cn);
 	return rc;
 }
-
+/*
 static int _listen(struct vzsock_ctx *ctx, void **conn)
 {
 	int rc = 0;
@@ -216,7 +216,7 @@ cleanup_0:
 	free((void *)cn);
 	return rc;
 }
-
+*/
 static int _accept(struct vzsock_ctx *ctx, void *srv_conn, void **conn)
 {
 	struct sock_conn *cn;

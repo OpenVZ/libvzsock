@@ -35,15 +35,27 @@
 char progname[NAME_MAX];
 int debug = 0;
 
+char crtfile[PATH_MAX + 1];
+char keyfile[PATH_MAX + 1];
+char ciphers[BUFSIZ+1];
+char CAfile[PATH_MAX + 1];
+char CApath[PATH_MAX + 1];
+
 static void usage()
 {
-	fprintf(stderr, "Virtuozzo vzmigrate daemon\n");
-	fprintf(stderr, "Usage:\n");
-	fprintf(stderr, "%s [-v] [-t]\n", progname);
-	fprintf(stderr, "%s -h\n", progname);
-	fprintf(stderr,"  Options:\n");
-	fprintf(stderr,"    -h/--help           show usage and exit\n");
-	fprintf(stderr,"    -v/--verbose        be verbose\n");
+	fprintf(stderr, "Virtuozzo vzmigrate daemon\n" \
+"Usage:\n" \
+"%s [-v] [-t]\n" \
+"%s -h\n" \
+"  Options:\n" \
+"       --crtfile <file>  load the certificate from file into ssl\n" \
+"       --keyfile <file>  load the private key from file into ssl\n" \
+"       --ciphers <file>  sets the list of available ciphers for ssl\n" \
+"                         See format in ciphers(1)\n" \
+"       --CAfile <file>   load CA trusted certificates from <file>\n" \
+"       --CApath <path>   load CA trusted certificates from files from <path>\n" \
+"    -v/--verbose         be verbose\n" \
+"    -h/--help            show usage and exit\n", progname, progname);
 }
 
 static int parse_cmd_line(int argc, char *argv[])
@@ -51,18 +63,64 @@ static int parse_cmd_line(int argc, char *argv[])
 	int c;
 	struct option options[] =
 	{
+		{"crtfile", required_argument, NULL, '1'},
+		{"keyfile", required_argument, NULL, '2'},
+		{"ciphers", required_argument, NULL, '3'},
+		{"CAfile", required_argument, NULL, '4'},
+		{"CApath", required_argument, NULL, '5'},
 		{"verbose", no_argument, NULL, 'v'},
 		{"help", no_argument, NULL, 'h'},
 		{ NULL, 0, NULL, 0 }
 	};
 
+	crtfile[0] = '\0';
+	keyfile[0] = '\0';
+	ciphers[0] = '\0';
+	CAfile[0] = '\0';
+	CApath[0] = '\0';
+
 	while (1)
 	{
-		c = getopt_long(argc, argv, "vht", options, NULL);
+		c = getopt_long(argc, argv, "vh1:2:3:4:5:", options, NULL);
 		if (c == -1)
 			break;
 		switch (c)
 		{
+		case '1':
+			if (optarg == NULL) {
+				usage();
+				exit(EXIT_FAILURE);
+			}
+			strncpy(crtfile, optarg, sizeof(crtfile));
+			break;
+		case '2':
+			if (optarg == NULL) {
+				usage();
+				exit(EXIT_FAILURE);
+			}
+			strncpy(keyfile, optarg, sizeof(keyfile));
+			break;
+		case '3':
+			if (optarg == NULL) {
+				usage();
+				exit(EXIT_FAILURE);
+			}
+			strncpy(ciphers, optarg, sizeof(ciphers));
+			break;
+		case '4':
+			if (optarg == NULL) {
+				usage();
+				exit(EXIT_FAILURE);
+			}
+			strncpy(CAfile, optarg, sizeof(CAfile));
+			break;
+		case '5':
+			if (optarg == NULL) {
+				usage();
+				exit(EXIT_FAILURE);
+			}
+			strncpy(CApath, optarg, sizeof(CApath));
+			break;
 		case 'v':
 			debug = 1;
 			break;
@@ -81,11 +139,11 @@ int main(int argc, char *argv[])
 {
 	int rc = 0;
 
+//	int type = VZSOCK_SOCK;
+	int type = VZSOCK_SSL;
 	struct vzsock_ctx ctx;
-	char crtfile[PATH_MAX + 1];
-	char keyfile[PATH_MAX + 1];
-	char ciphers[BUFSIZ+1];
-	void *srv_conn, *conn;
+//	void *srv_conn, *conn;
+	int srvsock, sock;
 
 	struct sockaddr_in addr;
 	pid_t pid;
@@ -95,7 +153,7 @@ int main(int argc, char *argv[])
 	strncpy(progname, basename(argv[0]), sizeof(progname));
 	parse_cmd_line(argc, argv);
 
-	if ((rc = vzsock_init(VZSOCK_SOCK, &ctx, NULL, NULL))) {
+	if ((rc = vzsock_init(type, &ctx, NULL, NULL))) {
 		syslog(LOG_ERR, "vzsock_init() return %d", rc);
 		return rc;
 	}
@@ -122,28 +180,65 @@ int main(int argc, char *argv[])
 			goto cleanup_0;
 		}
 	}
+	if (strlen(CAfile)) {
+		if ((rc = vzsock_set(&ctx, VZSOCK_DATA_CAFILE, 
+				(void *)CAfile, strlen(CAfile)))) {
+			syslog(LOG_ERR, "vzsock_set() return %d", rc);
+			goto cleanup_0;
+		}
+	}
+	if (strlen(CApath)) {
+		if ((rc = vzsock_set(&ctx, VZSOCK_DATA_CAFILE, 
+				(void *)CApath, strlen(CApath)))) {
+			syslog(LOG_ERR, "vzsock_set() return %d", rc);
+			goto cleanup_0;
+		}
+	}
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = INADDR_ANY;
 	addr.sin_port = htons(VZSOCK_TEST_PORT);
-	if ((rc = vzsock_set(&ctx, VZSOCK_DATA_ADDR, (void *)&addr, sizeof(addr)))) {
+/*
+	if ((rc = vzsock_set(&ctx, VZSOCK_DATA_ADDR, 
+			(void *)&addr, sizeof(addr)))) 
+	{
 		syslog(LOG_ERR, "vzsock_set() return %d", rc);
 		goto cleanup_0;
 	}
-
+*/
 	if ((rc = vzsock_open(&ctx))) {
 		syslog(LOG_ERR, "vzsock_open() return %d", rc);
 		goto cleanup_0;
 	}
 
-	if ((rc = vzsock_wait_conn(&ctx, &srv_conn))) {
-		syslog(LOG_ERR, "vzsock_wait_conn() return %d", rc);
+	if ((srvsock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
+		rc = -1;
+		syslog(LOG_ERR, "socket() : %m");
 		goto cleanup_0;
+	}
+
+	if (bind(srvsock, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+		rc = -1;
+		syslog(LOG_ERR, "bind() : %m");
+		goto cleanup_1;
+	}
+
+	if (listen(srvsock, SOMAXCONN)) {
+		rc = -1;
+		syslog(LOG_ERR, "listen() : %m");
+		goto cleanup_1;
 	}
 
 	syslog(LOG_INFO, "Started");
 	while (1) {
-		if ((rc = vzsock_accept_conn(&ctx, srv_conn, &conn))) {
-			syslog(LOG_ERR, "vzsock_accept_conn() return %d", rc);
+		struct sockaddr c_addr;
+		socklen_t addr_len;
+
+		addr_len = sizeof(c_addr);
+		if ((sock = accept(srvsock, 
+			(struct sockaddr *)&c_addr, &addr_len)) == -1)
+		{
+			rc = -1;
+			syslog(LOG_ERR, "accept() : %m");
 			goto cleanup_1;
 		}
 
@@ -151,15 +246,15 @@ int main(int argc, char *argv[])
 		if (pid < 0) {
 			syslog(LOG_ERR, "fork() : %m");
 		} else if (pid == 0) {
-			vzsock_close_conn(&ctx, srv_conn);
-			rc = server(&ctx, conn);
+			close(srvsock);
+			rc = server(&ctx, (void *)&sock);
 			exit(-rc);
 		}
-		vzsock_close_conn(&ctx, conn);
+		close(sock);
 	}
 
 cleanup_1:
-	vzsock_close_conn(&ctx, srv_conn);
+	close(srvsock);
 
 cleanup_0:
 	vzsock_close(&ctx);

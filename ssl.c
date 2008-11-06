@@ -28,7 +28,7 @@ static int open_ctx(struct vzsock_ctx *ctx);
 static void close_ctx(struct vzsock_ctx *ctx);
 static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size);
 static int open_conn(struct vzsock_ctx *ctx, void *unused, void **conn);
-static int wait_conn(struct vzsock_ctx *ctx, void **conn);
+//static int wait_conn(struct vzsock_ctx *ctx, void **conn);
 static int accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
 static int close_conn(struct vzsock_ctx *ctx, void *conn);
 static int set_conn(struct vzsock_ctx *ctx, void *conn, 
@@ -80,7 +80,7 @@ int _vzs_ssl_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->close = close_ctx;
 	handlers->set = set_ctx;
 	handlers->open_conn = open_conn;
-	handlers->wait_conn = wait_conn;
+//	handlers->wait_conn = wait_conn;
 	handlers->accept_conn = accept_conn;
 	handlers->close_conn = close_conn;
 	handlers->set_conn = set_conn;
@@ -137,22 +137,26 @@ static int open_ctx(struct vzsock_ctx *ctx)
 			goto cleanup_0;
 		}
 	}
-	if (SSL_CTX_check_private_key(data->ctx) != 1) {
-		rc = ssl_error(ctx, VZS_ERR_CANT_CONNECT, "SSL_CTX_check_private_key()");
-		goto cleanup_0;
+	if (strlen(data->crtfile) && strlen(data->keyfile)) {
+		if (SSL_CTX_check_private_key(data->ctx) != 1) {
+			rc = ssl_error(ctx, VZS_ERR_CANT_CONNECT, 
+				"SSL_CTX_check_private_key()");
+			goto cleanup_0;
+		}
 	}
 	if (strlen(data->CAfile) || strlen(data->CApath)) {
 		/* set CA certificate location */
 		if (SSL_CTX_load_verify_locations(data->ctx, 
 			strlen(data->CAfile)?data->CAfile:NULL, 
-			strlen(data->CApath)?data->CApath:NULL)) 
+			strlen(data->CApath)?data->CApath:NULL) == 0) 
 		{
 			rc = ssl_error(ctx, VZS_ERR_CANT_CONNECT, 
 				"SSL_CTX_load_verify_locations()");
 			goto cleanup_0;
 		}
 	}
-	SSL_CTX_set_verify(data->ctx, mode, NULL);
+	SSL_CTX_set_verify(data->ctx, mode, verify_callback);
+	SSL_CTX_set_mode(data->ctx, SSL_MODE_AUTO_RETRY);
 
 	return 0;
 
@@ -265,7 +269,6 @@ static int open_conn(struct vzsock_ctx *ctx, void *unused, void **conn)
 		goto cleanup_1;
 	}
 	SSL_set_fd(cn->ssl, cn->sock);
-	SSL_set_mode(cn->ssl, SSL_MODE_AUTO_RETRY);
 
 	while (1) {
 		if ((sslrc = SSL_connect(cn->ssl)) > 0)
@@ -305,7 +308,7 @@ cleanup_0:
 	free((void *)cn);
 	return rc;
 }
-
+/*
 static int wait_conn(struct vzsock_ctx *ctx, void **conn)
 {
 	int rc = 0;
@@ -342,27 +345,18 @@ cleanup_0:
 	free((void *)cn);
 	return rc;
 }
-
-static int accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **conn)
+*/
+static int accept_conn(struct vzsock_ctx *ctx, void *sock, void **conn)
 {
 	int rc, sslrc, err;
 	struct ssl_data *data = (struct ssl_data *)ctx->data;
 	struct ssl_conn *cn;
-	struct ssl_conn *srv = (struct ssl_conn *)srv_conn;
-	struct sockaddr addr;
-	socklen_t addr_len;
 
 	if ((cn = (struct ssl_conn *)malloc(sizeof(struct ssl_conn))) == NULL)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
 
-	addr_len = sizeof(addr);
-	if ((cn->sock = accept(srv->sock, 
-		(struct sockaddr *)&addr, &addr_len)) == -1)
-	{
-		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "accept() : %m");
-		goto cleanup_0;
-	}
-
+	cn->sock = *((int *)sock);
+ 
 	if (_vz_set_nonblock(cn->sock)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fcntl() : %m");
 		goto cleanup_1;
@@ -374,7 +368,6 @@ static int accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **conn)
 		goto cleanup_1;
 	}
 	SSL_set_fd(cn->ssl, cn->sock);
-	SSL_set_mode(cn->ssl, SSL_MODE_AUTO_RETRY);
 
 	while (1) {
 		if ((sslrc = SSL_accept(cn->ssl)) > 0)
@@ -408,8 +401,8 @@ static int accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **conn)
 cleanup_2:
 	SSL_free(cn->ssl);
 cleanup_1:
-	close(cn->sock);
-cleanup_0:
+//	close(cn->sock);
+//cleanup_0:
 	free((void *)cn);
 	return rc;
 }
@@ -597,7 +590,6 @@ static int send_data(
 		goto cleanup_0;
 	}
 	SSL_set_fd(ssl, sock);
-	SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
 
 	while (1) {
 		if ((sslrc = SSL_connect(ssl)) > 0)
@@ -809,7 +801,6 @@ static int recv_data(
 		goto cleanup_1;
 	}
 	SSL_set_fd(ssl, cli_sock);
-	SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
 
 	while (1) {
 		if ((sslrc = SSL_accept(ssl)) > 0)
