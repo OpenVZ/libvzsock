@@ -28,7 +28,6 @@ static int open_ctx(struct vzsock_ctx *ctx);
 static void close_ctx(struct vzsock_ctx *ctx);
 static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size);
 static int open_conn(struct vzsock_ctx *ctx, void *unused, void **conn);
-//static int wait_conn(struct vzsock_ctx *ctx, void **conn);
 static int accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
 static int close_conn(struct vzsock_ctx *ctx, void *conn);
 static int set_conn(struct vzsock_ctx *ctx, void *conn, 
@@ -80,7 +79,6 @@ int _vzs_ssl_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->close = close_ctx;
 	handlers->set = set_ctx;
 	handlers->open_conn = open_conn;
-//	handlers->wait_conn = wait_conn;
 	handlers->accept_conn = accept_conn;
 	handlers->close_conn = close_conn;
 	handlers->set_conn = set_conn;
@@ -297,6 +295,10 @@ static int open_conn(struct vzsock_ctx *ctx, void *unused, void **conn)
 			goto cleanup_2;
 	}
 
+	_vz_logger(ctx, LOG_DEBUG, "Connection established");
+	_vz_logger(ctx, LOG_DEBUG, "SSL connection using %s", 
+		SSL_get_cipher(cn->ssl));
+
 	*conn = cn;
 	return 0;
 
@@ -308,44 +310,7 @@ cleanup_0:
 	free((void *)cn);
 	return rc;
 }
-/*
-static int wait_conn(struct vzsock_ctx *ctx, void **conn)
-{
-	int rc = 0;
-	struct ssl_data *data = (struct ssl_data *)ctx->data;
-	struct ssl_conn *cn;
 
-	if (data->addr == NULL)
-		return _vz_error(ctx, VZS_ERR_BAD_PARAM, "address not defined");
-
-	if ((cn = (struct ssl_conn *)malloc(sizeof(struct ssl_conn))) == NULL)
-		return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
-
-	if ((cn->sock = socket(data->domain, data->type, data->protocol)) == -1) {
-		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "socket() : %m");
-		goto cleanup_0;
-	}
-
-	if (bind(cn->sock, data->addr, data->addr_len) == -1) {
-		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "bind() : %m");
-		goto cleanup_1;
-	}
-
-	if (listen(cn->sock, SOMAXCONN)) {
-		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "listen() : %m");
-		goto cleanup_1;
-	}
-
-	*conn = cn;
-	return 0;
-cleanup_1:
-	close(cn->sock);
-	cn->sock = -1;
-cleanup_0:
-	free((void *)cn);
-	return rc;
-}
-*/
 static int accept_conn(struct vzsock_ctx *ctx, void *sock, void **conn)
 {
 	int rc, sslrc, err;
@@ -395,6 +360,10 @@ static int accept_conn(struct vzsock_ctx *ctx, void *sock, void **conn)
 		if ((rc = ssl_select(ctx, cn->sock, err, 0)))
 			goto cleanup_2;
 	}
+	_vz_logger(ctx, LOG_DEBUG, "Connection established");
+	_vz_logger(ctx, LOG_DEBUG, "SSL connection using %s", 
+		SSL_get_cipher(cn->ssl));
+
 	*conn = cn;
 	return 0;
 

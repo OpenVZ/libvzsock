@@ -447,7 +447,8 @@ int ssl_redirect(
 				case EAGAIN:
 					break;
 				default:
-					_vz_logger(ctx, LOG_ERR, "read(stderr) : %m");
+					_vz_logger(ctx, LOG_ERR, 
+						"read(stderr) : %m");
 				}
 				break;
 			case 0:
@@ -465,60 +466,25 @@ int ssl_redirect(
 			}
 		}
 	}
-	_vz_logger(ctx, LOG_DEBUG, "pipe_bytes = %d, ssl_bytes = %d", pipe_bytes, ssl_bytes);
+	_vz_logger(ctx, LOG_DEBUG, "pipe_bytes = %d, ssl_bytes = %d", 
+		pipe_bytes, ssl_bytes);
 	return 0;
 }
 
-int verify_depth=0;
-int verify_error=X509_V_OK;
-
-int verify_callback(int ok, X509_STORE_CTX *ctx)
+int verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
 {
-	char buf[256];
-	X509 *err_cert;
-	int err,depth;
+	int err;
 
-	err_cert=X509_STORE_CTX_get_current_cert(ctx);
-	err=    X509_STORE_CTX_get_error(ctx);
-	depth=  X509_STORE_CTX_get_error_depth(ctx);
+	if (preverify_ok)
+		return 1;
 
-	X509_NAME_oneline(X509_get_subject_name(err_cert),buf,sizeof(buf));
-	fprintf(stderr,"depth=%d %s\n",depth,buf);
-	if (!ok)
-	{
-		fprintf(stderr, "verify error:num=%d:%s\n",err,
-			X509_verify_cert_error_string(err));
-		if (verify_depth >= depth)
-		{
-			ok=1;
-			verify_error=X509_V_OK;
-		}
-		else
-		{
-			ok=0;
-			verify_error=X509_V_ERR_CERT_CHAIN_TOO_LONG;
-		}
-	}
-	switch (ctx->error)
-	{
-	case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
-		X509_NAME_oneline(X509_get_issuer_name(ctx->current_cert),buf,sizeof buf);
-		fprintf(stderr,"issuer= %s\n",buf);
-		break;
-	case X509_V_ERR_CERT_NOT_YET_VALID:
-	case X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
-		fprintf(stderr,"notBefore=");
-//		ASN1_TIME_print(bio_err,X509_get_notBefore(ctx->current_cert));
-//		BIO_printf(bio_err,"\n");
-		break;
-	case X509_V_ERR_CERT_HAS_EXPIRED:
-	case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
-		fprintf(stderr,"notAfter=");
-//		ASN1_TIME_print(bio_err,X509_get_notAfter(ctx->current_cert));
-//		BIO_printf(bio_err,"\n");
-		break;
-	}
-	fprintf(stderr,"verify return:%d\n",ok);
-	return(ok);
+	err = X509_STORE_CTX_get_error(ctx);
+	syslog(LOG_ERR, "verify error:num=%d:%s\n", err, X509_verify_cert_error_string(err));
+	fprintf(stderr, "verify error:num=%d:%s\n", err, X509_verify_cert_error_string(err));
+	/* will ignore X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT error */
+	if (err == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT)
+		return 1;
+
+	return 0;
 }
 
