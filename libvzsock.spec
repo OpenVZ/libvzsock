@@ -1,10 +1,11 @@
 %define _incdir /usr/include/vz
+%define _sampledir /usr/share/libvzsock/samples
 
 
 Summary: Virtuozzo transport API library
 Name: libvzsock
 Version: 4.0.0
-Release: 1
+Release: 2
 License: Parallels
 Group: System Environment/Libraries
 Source: libvzsock.tar.bz2
@@ -24,6 +25,9 @@ make
 
 %install
 make install DESTDIR=$RPM_BUILD_ROOT
+# generate test private key and certificate
+openssl genrsa > $RPM_BUILD_ROOT/%{_sampledir}/test.key
+openssl req -new -key $RPM_BUILD_ROOT/%{_sampledir}/test.key -x509 -days 365 -subj /C=RU/ST=Moscow/L=Moscow/O=Company/OU=LinuxDev/CN=User/ -out $RPM_BUILD_ROOT/%{_sampledir}/test.crt -set_serial 0
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -45,9 +49,11 @@ Virtuozzo transport API development library
 %defattr(-,root,root)
 %dir %{_libdir}
 %dir %{_incdir}
+%dir %{_sampledir}
 %attr(755,root,root) %{_libdir}/%{name}.so
 %attr(644,root,root) %{_libdir}/%{name}.a
 %attr(644,root,root) %{_incdir}/*.h
+%attr(644,root,root) %{_sampledir}/*
 
 %changelog
 * Tue Aug  5 2008 krasnov@parallels.com  4.0.0-1

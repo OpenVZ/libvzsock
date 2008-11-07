@@ -10,6 +10,7 @@ INC = -I. -I/usr/include
 
 INCLUDEDIR = usr/include/vz
 LIBDIR = usr/lib
+SAMPLEDIR = usr/share/libvzsock/samples
 ifeq "${ARCH}" "x86_64"
 LIBDIR = usr/lib64
 endif
@@ -49,6 +50,9 @@ install:
 	install -m 644 $(NAME).h $(DESTDIR)/$(INCLUDEDIR)/
 	install -m 644 $(NAME).a $(DESTDIR)/$(LIBDIR)/
 	cp -af $(NAME).so $(DESTDIR)/$(LIBDIR)/
+	install -d $(DESTDIR)/$(SAMPLEDIR)
+	install -m 644 samples/*.{c,h} $(DESTDIR)/$(SAMPLEDIR)/
+	install -m 644 samples/Makefile $(DESTDIR)/$(SAMPLEDIR)/
 
 depend:: .depend
 .depend:: $(OBJ:.o=.c) $(LOBJ:.lo=.c)

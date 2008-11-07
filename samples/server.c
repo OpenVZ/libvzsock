@@ -150,6 +150,8 @@ int main(int argc, char *argv[])
 
 	openlog("vzsock_srv", LOG_PID, LOG_USER);
 
+	strcpy(crtfile, "/usr/share/libvzsock/samples/test.crt");
+	strcpy(keyfile, "/usr/share/libvzsock/samples/test.key");
 	strncpy(progname, basename(argv[0]), sizeof(progname));
 	parse_cmd_line(argc, argv);
 
