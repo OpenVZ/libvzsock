@@ -28,7 +28,7 @@
 #include <sys/select.h>
 #include <stdlib.h>
 
-#include <libvzsock.h>
+#include <vz/libvzsock.h>
 
 #include "sample.h"
 
@@ -73,8 +73,8 @@ static int parse_cmd_line(int argc, char *argv[])
 		{ NULL, 0, NULL, 0 }
 	};
 
-	crtfile[0] = '\0';
-	keyfile[0] = '\0';
+	strcpy(crtfile, "/usr/share/libvzsock/samples/test.crt");
+	strcpy(keyfile, "/usr/share/libvzsock/samples/test.key");
 	ciphers[0] = '\0';
 	CAfile[0] = '\0';
 	CApath[0] = '\0';
@@ -150,8 +150,6 @@ int main(int argc, char *argv[])
 
 	openlog("vzsock_srv", LOG_PID, LOG_USER);
 
-	strcpy(crtfile, "/usr/share/libvzsock/samples/test.crt");
-	strcpy(keyfile, "/usr/share/libvzsock/samples/test.key");
 	strncpy(progname, basename(argv[0]), sizeof(progname));
 	parse_cmd_line(argc, argv);
 

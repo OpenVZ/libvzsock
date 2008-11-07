@@ -2,11 +2,12 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <libvzsock.h>
 #include <string.h>
 #include <syslog.h>
 #include <libgen.h>
 #include <signal.h>
+
+#include <vz/libvzsock.h>
 
 #include "sample.h"
 
