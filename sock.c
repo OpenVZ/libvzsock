@@ -286,9 +286,9 @@ static int _send_err_msg(
 		const char * data, 
 		size_t size)
 {
-	struct fd_conn *cn = (struct fd_conn *)conn;
+	struct sock_conn *cn = (struct sock_conn *)conn;
 
-	return _vzs_writefd(ctx, cn->out, data, size, 1);
+	return _vzs_writefd(ctx, cn->sock, data, size, 1);
 }
 
 /* 

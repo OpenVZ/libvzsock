@@ -531,7 +531,7 @@ static int send_err_msg(
 		const char * data, 
 		size_t size)
 {
-	struct fd_conn *cn = (struct fd_conn *)conn;
+	struct ssh_conn *cn = (struct ssh_conn *)conn;
 
 	return _vzs_writefd(ctx, cn->out, data, size, 1);
 }
