@@ -376,8 +376,8 @@ int _vzs_rmdir(struct vzsock_ctx *ctx, const char *dirname)
 }
 
 /* Write <size> bytes of <data> in non-blocking descriptor <fd>.
-   We can't use _vz_error()/_vz_logger() in this function because on server side 
-   _vz_error() can call this function to send error message to client side. */ 
+   In <silent> mode do not call _vz_error()/_vz_logger() to avoid recurrent 
+   calls on server side. */ 
 int _vzs_writefd(
 		struct vzsock_ctx *ctx, 
 		int fd, 

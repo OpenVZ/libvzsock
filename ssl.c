@@ -37,6 +37,11 @@ static int _send(
 		void *conn, 
 		const char * data, 
 		size_t size);
+static int _send_err_msg(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * data, 
+		size_t size);
 static int recv_str(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
@@ -83,6 +88,7 @@ int _vzs_ssl_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->close_conn = close_conn;
 	handlers->set_conn = set_conn;
 	handlers->send = _send;
+	handlers->send_err_msg = _send_err_msg;
 	handlers->recv_str = recv_str;
 	handlers->send_data = send_data;
 	handlers->recv_data = recv_data;
@@ -413,6 +419,16 @@ static int _send(
 		size_t size)
 {
 	return ssl_write(ctx, conn, data, size, 0);
+}
+
+/* send data via ssl connection */
+static int _send_err_msg(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * data, 
+		size_t size)
+{
+	return ssl_write(ctx, conn, data, size, 1);
 }
 
 /* 

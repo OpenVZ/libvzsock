@@ -87,6 +87,11 @@ int vzsock_send(
 		void *conn, 
 		const char * data, 
 		size_t size);
+int vzsock_send_err_msg(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * data, 
+		size_t size);
 /* read string, separated by <separator>. Will write '\0' on end of string */
 int vzsock_recv_str(
 		struct vzsock_ctx *ctx, 

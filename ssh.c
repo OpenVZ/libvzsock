@@ -41,6 +41,11 @@ static int send(
 		void *conn, 
 		const char * data, 
 		size_t size);
+static int send_err_msg(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * data, 
+		size_t size);
 static int recv_str(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
@@ -77,6 +82,7 @@ int _vzs_ssh_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->close_conn = close_conn;
 	handlers->set_conn = set_conn;
 	handlers->send = send;
+	handlers->send_err_msg = send_err_msg;
 	handlers->recv_str = recv_str;
 	handlers->send_data = rcopy;
 	handlers->recv_data = wait_rcopy;
@@ -517,6 +523,17 @@ static int send(
 	struct ssh_conn *cn = (struct ssh_conn *)conn;
 
 	return _vzs_writefd(ctx, cn->out, data, size, 0);
+}
+
+static int send_err_msg(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * data, 
+		size_t size)
+{
+	struct fd_conn *cn = (struct fd_conn *)conn;
+
+	return _vzs_writefd(ctx, cn->out, data, size, 1);
 }
 
 /* 

@@ -39,6 +39,11 @@ struct vzs_handlers {
 			void *conn, 
 			const char * data, 
 			size_t size);
+	int (*send_err_msg)(
+			struct vzsock_ctx *ctx, 
+			void *conn, 
+			const char * data, 
+			size_t size);
 	int (*recv_str)(
 			struct vzsock_ctx *ctx, 
 			void *conn, 

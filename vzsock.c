@@ -228,6 +228,17 @@ int vzsock_send(
 	return handlers->send(ctx, conn, data, size);
 }
 
+int vzsock_send_err_msg(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * data, 
+		size_t size)
+{
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+
+	return handlers->send_err_msg(ctx, conn, data, size);
+}
+
 int vzsock_recv_str(
 		struct vzsock_ctx *ctx, 
 		void *conn, 

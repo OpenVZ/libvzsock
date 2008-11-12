@@ -33,6 +33,11 @@ static int _send(
 		void *conn, 
 		const char * data, 
 		size_t size);
+static int _send_err_msg(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * data, 
+		size_t size);
 static int recv_str(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
@@ -63,6 +68,7 @@ int _vzs_fd_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->close_conn = close_conn;
 	handlers->set_conn = set_conn;
 	handlers->send = _send;
+	handlers->send_err_msg = _send_err_msg;
 	handlers->recv_str = recv_str;
 	handlers->send_data = rcopy;
 	handlers->recv_data = wait_rcopy;
@@ -144,6 +150,17 @@ static int _send(
 	struct fd_conn *cn = (struct fd_conn *)conn;
 
 	return _vzs_writefd(ctx, cn->out, data, size, 0);
+}
+
+static int _send_err_msg(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * data, 
+		size_t size)
+{
+	struct fd_conn *cn = (struct fd_conn *)conn;
+
+	return _vzs_writefd(ctx, cn->out, data, size, 1);
 }
 
 /* 

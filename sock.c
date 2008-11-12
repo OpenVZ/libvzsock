@@ -1,4 +1,4 @@
-/* $Id: migssh.cpp,v 1.26 2008/06/26 14:40:12 krasnov Exp $
+/* $Id: sock.c,v 1.26 2008/06/26 14:40:12 krasnov Exp $
  *
  * Copyright (c) SWsoft, 2006-2007
  *
@@ -31,6 +31,11 @@ static int close_conn(struct vzsock_ctx *ctx, void *conn);
 static int set_conn(struct vzsock_ctx *ctx, void *conn, 
 		int type, void *data, size_t size);
 static int _send(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * data, 
+		size_t size);
+static int _send_err_msg(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
 		const char * data, 
@@ -76,6 +81,7 @@ int _vzs_sock_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->close_conn = close_conn;
 	handlers->set_conn = set_conn;
 	handlers->send = _send;
+	handlers->send_err_msg = _send_err_msg;
 	handlers->recv_str = recv_str;
 	handlers->send_data = send_data;
 	handlers->recv_data = recv_data;
@@ -272,6 +278,17 @@ static int _send(
 	struct sock_conn *cn = (struct sock_conn *)conn;
 
 	return _vzs_writefd(ctx, cn->sock, data, size, 0);
+}
+
+static int _send_err_msg(
+		struct vzsock_ctx *ctx, 
+		void *conn, 
+		const char * data, 
+		size_t size)
+{
+	struct fd_conn *cn = (struct fd_conn *)conn;
+
+	return _vzs_writefd(ctx, cn->out, data, size, 1);
 }
 
 /* 
