@@ -30,12 +30,14 @@ static void close_ctx(struct vzsock_ctx *ctx);
 static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size);
 
 static int open_conn(struct vzsock_ctx *ctx, void *data, void **conn);
-//static int wait_conn(struct vzsock_ctx *ctx, void **conn);
 static int accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **new_conn);
+static int is_open_conn(void *conn);
 static int close_conn(struct vzsock_ctx *ctx, void *conn);
 /* set connection parameter(s) */
 static int set_conn(struct vzsock_ctx *ctx, void *conn, 
 		int type, void *data, size_t size);
+static int get_conn(struct vzsock_ctx *ctx, void *conn, 
+		int type, void *data, size_t *size);
 static int send(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
@@ -77,10 +79,11 @@ int _vzs_ssh_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->close = close_ctx;
 	handlers->set = set_ctx;
 	handlers->open_conn = open_conn;
-//	handlers->wait_conn = wait_conn;
 	handlers->accept_conn = accept_conn;
+	handlers->is_open_conn = is_open_conn;
 	handlers->close_conn = close_conn;
 	handlers->set_conn = set_conn;
+	handlers->get_conn = get_conn;
 	handlers->send = send;
 	handlers->send_err_msg = send_err_msg;
 	handlers->recv_str = recv_str;
@@ -468,26 +471,36 @@ cleanup_0:
 
 	return rc;
 }
-/*
-static int wait_conn(struct vzsock_ctx *ctx, void **conn)
-{
-	return -1;
-}
-*/
+
 static int accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **new_conn)
 {
 	return -1;
+}
+
+static int is_open_conn(void *conn)
+{
+	struct ssh_conn *cn = (struct ssh_conn *)conn;
+
+	if (conn == NULL)
+		return 0;
+	if (cn->pid == 0)
+		return 0;
+	if (kill(cn->pid, 0))
+		return 0;
+
+	return 1;
 }
 
 static int close_conn(struct vzsock_ctx *ctx, void *conn)
 {
 	struct ssh_conn *cn = (struct ssh_conn *)conn;
 
-	if (cn->pid != 0) {
+	if (!is_open_conn(conn))
+		return 0;
+
 /* TODO: check retcode and SIGKILL ? */
-		kill(cn->pid, SIGTERM);
-		cn->pid = 0;
-	}
+	kill(cn->pid, SIGTERM);
+	free(conn);
 
 	return 0;
 }
@@ -505,6 +518,35 @@ static int set_conn(struct vzsock_ctx *ctx, void *conn,
 		int *fd = (int *)data;
 		cn->in = fd[0];
 		cn->out = fd[1];
+		break;
+	}
+	default:
+		return _vz_error(ctx, VZS_ERR_BAD_PARAM, 
+			"Unknown data type : %d", type);
+	}
+	return 0;
+}
+
+/* get connection parameter(s) */
+static int get_conn(struct vzsock_ctx *ctx, void *conn, 
+		int type, void *data, size_t *size)
+{
+	struct ssh_conn *cn = (struct ssh_conn *)conn;
+
+	switch (type) {
+	case VZSOCK_DATA_FDPAIR:
+	{
+		/* get pair of descriptors */
+		int fd[2];
+
+		if (*size < sizeof(fd))
+			return _vz_error(ctx, VZS_ERR_BAD_PARAM, 
+				"It is't enough buffer size (%d) "\
+				"for data type : %d", *size, type);
+		fd[0] = cn->in;
+		fd[1] = cn->out;
+		memcpy(data, (void *)fd, sizeof(fd));
+		*size = sizeof(fd);
 		break;
 	}
 	default:

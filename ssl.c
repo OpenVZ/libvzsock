@@ -29,9 +29,12 @@ static void close_ctx(struct vzsock_ctx *ctx);
 static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size);
 static int open_conn(struct vzsock_ctx *ctx, void *unused, void **conn);
 static int accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
+static int is_open_conn(void *conn);
 static int close_conn(struct vzsock_ctx *ctx, void *conn);
 static int set_conn(struct vzsock_ctx *ctx, void *conn, 
 		int type, void *data, size_t size);
+static int get_conn(struct vzsock_ctx *ctx, void *conn, 
+		int type, void *data, size_t *size);
 static int _send(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
@@ -85,8 +88,10 @@ int _vzs_ssl_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->set = set_ctx;
 	handlers->open_conn = open_conn;
 	handlers->accept_conn = accept_conn;
+	handlers->is_open_conn = is_open_conn;
 	handlers->close_conn = close_conn;
 	handlers->set_conn = set_conn;
+	handlers->get_conn = get_conn;
 	handlers->send = _send;
 	handlers->send_err_msg = _send_err_msg;
 	handlers->recv_str = recv_str;
@@ -382,11 +387,24 @@ cleanup_1:
 	return rc;
 }
 
+static int is_open_conn(void *conn)
+{
+	struct ssl_conn *cn = (struct ssl_conn *)conn;
+
+	if (conn == NULL)
+		return 0;
+
+	if (!SSL_is_init_finished(cn->ssl))
+		return 0;
+
+	return 1;
+}
+
 static int close_conn(struct vzsock_ctx *ctx, void *conn)
 {
 	struct ssl_conn *cn = (struct ssl_conn *)conn;
 
-	if (cn->ssl == NULL)
+	if (!is_open_conn(conn))
 		/* already closed */
 		return 0;
 
@@ -397,8 +415,7 @@ static int close_conn(struct vzsock_ctx *ctx, void *conn)
 			break;
 
 	SSL_free(cn->ssl);
-	cn->ssl = NULL;
-	cn->sock = -1;
+	free(conn);
 
 	return 0;
 }
@@ -406,8 +423,12 @@ static int close_conn(struct vzsock_ctx *ctx, void *conn)
 static int set_conn(struct vzsock_ctx *ctx, void *conn, 
 		int type, void *data, size_t size)
 {
-//	struct ssl_conn *cn = (struct ssl_conn *)conn;
+	return 0;
+}
 
+static int get_conn(struct vzsock_ctx *ctx, void *conn, 
+		int type, void *data, size_t *size)
+{
 	return 0;
 }
 

@@ -191,6 +191,13 @@ int vzsock_accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **conn)
 	return 0;
 }
 
+int vzsock_is_open_conn(struct vzsock_ctx *ctx, void *conn) 
+{
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+
+	return handlers->is_open_conn(conn);
+}
+
 int vzsock_close_conn(struct vzsock_ctx *ctx, void *conn)
 {
 	int rc;
@@ -217,6 +224,14 @@ int vzsock_set_conn(struct vzsock_ctx *ctx, void *conn,
 	return handlers->set_conn(ctx, conn, type, data, size);
 }
 
+int vzsock_get_conn(struct vzsock_ctx *ctx, void *conn, 
+		int type, void *data, size_t *size)
+{
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+
+	return handlers->get_conn(ctx, conn, type, data, size);
+}
+
 int vzsock_send(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
@@ -237,17 +252,6 @@ int vzsock_send_err_msg(
 	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
 
 	return handlers->send_err_msg(ctx, conn, data, size);
-}
-
-int vzsock_recv_str(
-		struct vzsock_ctx *ctx, 
-		void *conn, 
-		char *data, 
-		size_t size)
-{
-	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
-
-	return handlers->recv_str(ctx, conn, '\0', data, size);
 }
 
 int vzsock_recv(

@@ -25,11 +25,13 @@ static int open_ctx(struct vzsock_ctx *ctx);
 static void close_ctx(struct vzsock_ctx *ctx);
 static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size);
 static int _connect(struct vzsock_ctx *ctx, void *data, void **conn);
-//static int _listen(struct vzsock_ctx *ctx, void **conn);
 static int _accept(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
+static int is_open_conn(void *conn);
 static int close_conn(struct vzsock_ctx *ctx, void *conn);
 static int set_conn(struct vzsock_ctx *ctx, void *conn, 
 		int type, void *data, size_t size);
+static int get_conn(struct vzsock_ctx *ctx, void *conn, 
+		int type, void *data, size_t *size);
 static int _send(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
@@ -76,10 +78,11 @@ int _vzs_sock_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->close = close_ctx;
 	handlers->set = set_ctx;
 	handlers->open_conn = _connect;
-//	handlers->wait_conn = _listen;
 	handlers->accept_conn = _accept;
+	handlers->is_open_conn = is_open_conn;
 	handlers->close_conn = close_conn;
 	handlers->set_conn = set_conn;
+	handlers->get_conn = get_conn;
 	handlers->send = _send;
 	handlers->send_err_msg = _send_err_msg;
 	handlers->recv_str = recv_str;
@@ -245,10 +248,26 @@ static int _accept(struct vzsock_ctx *ctx, void *srv_conn, void **conn)
 	return 0;
 }
 
+static int is_open_conn(void *conn)
+{
+	struct sock_conn *cn = (struct sock_conn *)conn;
+	int opt;
+	socklen_t opt_len;
+
+	if (conn == NULL)
+		return 0;
+	opt_len = sizeof(opt);
+	if (getsockopt(cn->sock, SOL_SOCKET, SO_ERROR, (void *)&opt, &opt_len))
+		return 0;
+
+	return 1;
+}
+
 static int close_conn(struct vzsock_ctx *ctx, void *conn)
 {
 	struct sock_conn *cn = (struct sock_conn *)conn;
-	if (cn->sock == -1)
+
+	if (!is_open_conn(conn))
 		/* already closed */
 		return 0;
 
@@ -256,7 +275,7 @@ static int close_conn(struct vzsock_ctx *ctx, void *conn)
 		if (errno != EINTR)
 			break;
 
-	cn->sock = -1;
+	free(conn);
 
 	return 0;
 }
@@ -264,8 +283,12 @@ static int close_conn(struct vzsock_ctx *ctx, void *conn)
 static int set_conn(struct vzsock_ctx *ctx, void *conn, 
 		int type, void *data, size_t size)
 {
-//	struct sock_conn *cn = (struct sock_conn *)conn;
+	return 0;
+}
 
+static int get_conn(struct vzsock_ctx *ctx, void *conn, 
+		int type, void *data, size_t *size)
+{
 	return 0;
 }
 

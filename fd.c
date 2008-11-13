@@ -23,11 +23,13 @@ static int open_ctx(struct vzsock_ctx *ctx);
 static void close_ctx(struct vzsock_ctx *ctx);
 static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size);
 static int open_conn(struct vzsock_ctx *ctx, void *data, void **conn);
-//static int wait_conn(struct vzsock_ctx *ctx, void **conn);
 static int accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **new_conn);
+static int is_open_conn(void *conn);
 static int close_conn(struct vzsock_ctx *ctx, void *conn);
-static int set_conn(struct vzsock_ctx *ctx, void *conn, 
+static int set_conn(struct vzsock_ctx *ctx, void *conn,
 		int type, void *data, size_t size);
+static int get_conn(struct vzsock_ctx *ctx, void *conn,
+		int type, void *data, size_t *size);
 static int _send(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
@@ -63,10 +65,11 @@ int _vzs_fd_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->close = close_ctx;
 	handlers->set = set_ctx;
 	handlers->open_conn = open_conn;
-//	handlers->wait_conn = wait_conn;
 	handlers->accept_conn = accept_conn;
+	handlers->is_open_conn = is_open_conn;
 	handlers->close_conn = close_conn;
 	handlers->set_conn = set_conn;
+	handlers->get_conn = get_conn;
 	handlers->send = _send;
 	handlers->send_err_msg = _send_err_msg;
 	handlers->recv_str = recv_str;
@@ -99,23 +102,36 @@ static int open_conn(struct vzsock_ctx *ctx, void *unused, void **conn)
 
 	if ((cn = (struct fd_conn *)malloc(sizeof(struct fd_conn))) == NULL)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
+	cn->in = -1;
+	cn->out = -1;
 	*conn = cn;
 
 	return 0;
 }
-/*
-static int wait_conn(struct vzsock_ctx *ctx, void **conn)
-{
-	return -1;
-}
-*/
+
 static int accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **new_conn)
 {
 	return -1;
 }
 
+static int is_open_conn(void *conn)
+{
+	struct fd_conn *cn = (struct fd_conn *)conn;
+	struct stat st;
+
+	if (conn == NULL)
+		return 0;
+	if (fstat(cn->in, &st))
+		return 0;
+	if (fstat(cn->out, &st))
+		return 0;
+
+	return 1;
+}
+
 static int close_conn(struct vzsock_ctx *ctx, void *conn)
 {
+	free(conn);
 	return 0;
 }
 
@@ -132,6 +148,35 @@ static int set_conn(struct vzsock_ctx *ctx, void *conn,
 		int *fd = (int *)data;
 		cn->in = fd[0];
 		cn->out = fd[1];
+		break;
+	}
+	default:
+		return _vz_error(ctx, VZS_ERR_BAD_PARAM, 
+			"Unknown data type : %d", type);
+	}
+	return 0;
+}
+
+/* get connection parameter(s) */
+static int get_conn(struct vzsock_ctx *ctx, void *conn, 
+		int type, void *data, size_t *size)
+{
+	struct fd_conn *cn = (struct fd_conn *)conn;
+
+	switch (type) {
+	case VZSOCK_DATA_FDPAIR:
+	{
+		/* get pair of descriptors */
+		int fd[2];
+
+		if (*size < sizeof(fd))
+			return _vz_error(ctx, VZS_ERR_BAD_PARAM, 
+				"It is't enough buffer size (%d) "\
+				"for data type : %d", *size, type);
+		fd[0] = cn->in;
+		fd[1] = cn->out;
+		memcpy(data, (void *)fd, sizeof(fd));
+		*size = sizeof(fd);
 		break;
 	}
 	default:

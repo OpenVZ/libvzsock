@@ -77,26 +77,22 @@ int vzsock_open(struct vzsock_ctx *ctx);
 void vzsock_close(struct vzsock_ctx *ctx);
 int vzsock_set(struct vzsock_ctx *ctx, int type, void *data, size_t size);
 int vzsock_open_conn(struct vzsock_ctx *ctx, void *data, void **conn);
-//int vzsock_wait_conn(struct vzsock_ctx *ctx, void **conn);
 int vzsock_accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
+int vzsock_is_open_conn(struct vzsock_ctx *ctx, void *conn);
 int vzsock_close_conn(struct vzsock_ctx *ctx, void *conn);
 int vzsock_set_conn(struct vzsock_ctx *ctx, void *conn, 
 		int type, void *data, size_t size);
+int vzsock_get_conn(struct vzsock_ctx *ctx, void *conn,
+		int type, void *data, size_t *size);
 int vzsock_send(
-		struct vzsock_ctx *ctx, 
-		void *conn, 
-		const char * data, 
+		struct vzsock_ctx *ctx,
+		void *conn,
+		const char * data,
 		size_t size);
 int vzsock_send_err_msg(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
 		const char * data, 
-		size_t size);
-/* read string */
-int vzsock_recv_str(
-		struct vzsock_ctx *ctx, 
-		void *conn, 
-		char *data, 
 		size_t size);
 /* read string, separated by <separator>. Will write '\0' on end of string */
 int vzsock_recv(
@@ -105,6 +101,8 @@ int vzsock_recv(
 		char separator, 
 		char *data, 
 		size_t size);
+#define vzsock_recv_str(ctx, conn, data, size) \
+		vzsock_recv((ctx), (conn), ('\0'), (data), (size))
 /* 
  To read reply from server(destination) side as |errcode|:replymessage
  NOTE: use only on client(source) side
