@@ -92,12 +92,19 @@ int vzsock_send_err_msg(
 		void *conn, 
 		const char * data, 
 		size_t size);
-/* read string, separated by <separator>. Will write '\0' on end of string */
+/* read string */
 int vzsock_recv_str(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
 		char *data, 
 		size_t size);
+/* read string, separated by <separator>. Will write '\0' on end of string */
+int vzsock_recv(
+		struct vzsock_ctx *ctx, 
+		void *conn,
+		char separator, 
+		char *data, 
+		size_t size)
 /* 
  To read reply from server(destination) side as |errcode|:replymessage
  NOTE: use only on client(source) side

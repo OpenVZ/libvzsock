@@ -250,6 +250,18 @@ int vzsock_recv_str(
 	return handlers->recv_str(ctx, conn, '\0', data, size);
 }
 
+int vzsock_recv(
+		struct vzsock_ctx *ctx, 
+		void *conn,
+		char separator, 
+		char *data, 
+		size_t size)
+{
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+
+	return handlers->recv_str(ctx, conn, separator, data, size);
+}
+
 /*
  Message format : |code|:message
  code == 0 - server reply,
