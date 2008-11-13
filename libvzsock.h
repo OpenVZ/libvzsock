@@ -104,7 +104,7 @@ int vzsock_recv(
 		void *conn,
 		char separator, 
 		char *data, 
-		size_t size)
+		size_t size);
 /* 
  To read reply from server(destination) side as |errcode|:replymessage
  NOTE: use only on client(source) side
