@@ -142,8 +142,26 @@ int vzsock_set(struct vzsock_ctx *ctx, int type, void *data, size_t size)
 	case VZSOCK_DATA_DEBUG:
 		ctx->debug = *((int *)data);
 		break;
-		default:
+	default:
 		return handlers->set(ctx, type, data, size);
+	}
+	return 0;
+}
+
+int vzsock_get(struct vzsock_ctx *ctx, int type, void *data, size_t *size)
+{
+	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+
+	switch (type) {
+	case VZSOCK_DATA_PASSWORD:
+		if (*size <= strlen(ctx->password))
+			return _vz_error(ctx, VZS_ERR_BAD_PARAM, 
+				"It is't enough buffer size (%d) "\
+				"for data type : %d", *size, type);
+		memcpy(data, ctx->password, strlen(ctx->password)+1);
+		break;
+	default:
+		return handlers->get(ctx, type, data, size);
 	}
 	return 0;
 }

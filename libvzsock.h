@@ -54,6 +54,7 @@ struct vzsock_ctx {
 #define VZSOCK_DATA_CIPHERS	11 /* ciphers list */
 #define VZSOCK_DATA_CAFILE	12 /* CA certificate file */
 #define VZSOCK_DATA_CAPATH	13 /* CA certificate path */
+#define VZSOCK_DATA_PASSWORD	14 /* password */
  
 /* errors code */
 #define VZS_ERR_SYSTEM		1
@@ -76,6 +77,7 @@ int vzsock_init(
 int vzsock_open(struct vzsock_ctx *ctx);
 void vzsock_close(struct vzsock_ctx *ctx);
 int vzsock_set(struct vzsock_ctx *ctx, int type, void *data, size_t size);
+int vzsock_get(struct vzsock_ctx *ctx, int type, void *data, size_t *size);
 int vzsock_open_conn(struct vzsock_ctx *ctx, void *data, void **conn);
 int vzsock_accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
 int vzsock_is_open_conn(struct vzsock_ctx *ctx, void *conn);

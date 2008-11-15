@@ -22,6 +22,7 @@
 static int open_ctx(struct vzsock_ctx *ctx);
 static void close_ctx(struct vzsock_ctx *ctx);
 static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size);
+static int get_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t *size);
 static int open_conn(struct vzsock_ctx *ctx, void *data, void **conn);
 static int accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **new_conn);
 static int is_open_conn(void *conn);
@@ -64,6 +65,7 @@ int _vzs_fd_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->open = open_ctx;
 	handlers->close = close_ctx;
 	handlers->set = set_ctx;
+	handlers->get = get_ctx;
 	handlers->open_conn = open_conn;
 	handlers->accept_conn = accept_conn;
 	handlers->is_open_conn = is_open_conn;
@@ -92,7 +94,12 @@ static void close_ctx(struct vzsock_ctx *ctx)
 
 static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size)
 {
-	return 0;
+	return _vz_error(ctx, VZS_ERR_BAD_PARAM, "Unknown data type : %d", type);
+}
+
+static int get_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t *size)
+{
+	return _vz_error(ctx, VZS_ERR_BAD_PARAM, "Unknown data type : %d", type);
 }
 
 /* start connection */

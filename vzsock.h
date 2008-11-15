@@ -22,6 +22,8 @@ struct vzs_handlers {
 	void (*close)(struct vzsock_ctx *ctx);
 	/* set context parameter(s) */
 	int (*set)(struct vzsock_ctx *ctx, int type, void *data, size_t size);
+	/* get context parameter(s) */
+	int (*get)(struct vzsock_ctx *ctx, int type, void *data, size_t *size);
 
 	/* open new connection (connect) */
 	int (*open_conn)(struct vzsock_ctx *ctx, void *data, void **conn);

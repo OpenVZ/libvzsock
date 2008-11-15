@@ -28,6 +28,7 @@ static int open_ctx(struct vzsock_ctx *ctx);
 static void close_ctx(struct vzsock_ctx *ctx);
 /* set context parameter(s) */
 static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size);
+static int get_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t *size);
 
 static int open_conn(struct vzsock_ctx *ctx, void *data, void **conn);
 static int accept_conn(struct vzsock_ctx *ctx, void *srv_conn, void **new_conn);
@@ -78,6 +79,7 @@ int _vzs_ssh_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	handlers->open = open_ctx;
 	handlers->close = close_ctx;
 	handlers->set = set_ctx;
+	handlers->get = get_ctx;
 	handlers->open_conn = open_conn;
 	handlers->accept_conn = accept_conn;
 	handlers->is_open_conn = is_open_conn;
@@ -139,6 +141,12 @@ static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size)
 			"Unknown data type : %d", type);
 	}
 	return 0;
+}
+
+/* get context parameter(s) */
+static int get_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t *size)
+{
+	return _vz_error(ctx, VZS_ERR_BAD_PARAM, "Unknown data type : %d", type);
 }
 
 /* get default ssh options
