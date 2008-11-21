@@ -23,11 +23,7 @@
 
 /* context operations */
 
-int vzsock_init(
-		int type, 
-		struct vzsock_ctx *ctx,
-		int (*logger)(int level, const char *fmt, va_list pvar),
-		int (*readpwd)(const char *prompt, char *pass, size_t size))
+int vzsock_init(int type, struct vzsock_ctx *ctx)
 {
 	int rc;
 	char path[PATH_MAX];
@@ -52,8 +48,9 @@ int vzsock_init(
 	ctx->debug = 0;
 	ctx->errcode = 0;
 	ctx->errmsg[0] = '\0';
-	ctx->logger = logger;
-	ctx->readpwd = readpwd;
+	ctx->logger = NULL;
+	ctx->readpwd = NULL;
+	ctx->filter = NULL;
 	ctx->password[0] = '\0';
 	ctx->tmo = VZSOCK_DEF_TMO;
  
@@ -141,6 +138,15 @@ int vzsock_set(struct vzsock_ctx *ctx, int type, void *data, size_t size)
 		break;
 	case VZSOCK_DATA_DEBUG:
 		ctx->debug = *((int *)data);
+		break;
+	case VZSOCK_DATA_LOGGER:
+		ctx->logger = (int (*)(int, const char *, va_list))data;
+		break;
+	case VZSOCK_DATA_READPWD:
+		ctx->readpwd = (int (*)(const char *, char *, size_t))data;
+		break;
+	case VZSOCK_DATA_FILTER:
+		ctx->filter = (int (*)(const char *, char *, size_t *))data;
 		break;
 	default:
 		return handlers->set(ctx, type, data, size);
@@ -275,71 +281,36 @@ int vzsock_send_err_msg(
 int vzsock_recv(
 		struct vzsock_ctx *ctx, 
 		void *conn,
-		char separator, 
-		char *data, 
-		size_t size)
+		char separator,
+		char *data,
+		size_t *size)
 {
+	char buffer[BUFSIZ];
+	int rc, ret;
 	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
+	size_t sz;
 
-	return handlers->recv_str(ctx, conn, separator, data, size);
-}
-
-/*
- Message format : |code|:message
- code == 0 - server reply,
- also: LOG_ERR LOG_WARNING LOG_NOTICE LOG_INFO LOG_DEBUG 
- Server can send debug message, client will show his message
- NOTE: use only on client(source) side
-*/
-int vzsock_read_srv_reply(
-		struct vzsock_ctx *ctx, 
-		void *conn, 
-		char *reply, 
-		size_t size)
-{
-	char buffer[BUFSIZ+1];
-	int rc;
-	char *p;
-	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
-
-	/* read/and log debug/info/.. messages until get reply */
-	ctx->code = 0;
 	while (1) {
-		if ((rc = handlers->recv_str(ctx, conn, '\0', buffer, sizeof(buffer))))
+		sz = sizeof(buffer);
+		if ((rc = handlers->recv_str(ctx, conn, separator, buffer, &sz)))
 			return rc;
-
-		p = buffer;
-		if (*p != '|')
-			break;
-		for (p++; *p && *p != '|'; p++) ;
-		if (*p != '|')
-			break;
-		*(p++) = '\0';
-		ctx->code = strtol(buffer+1, NULL, 10);
-//		if (ctx->code < LOG_DEBUG)
-		if (ctx->code < 1)
-			break;
-
-		/* it's a debug message : print and wait reply again
-		   To print this message only on debug level (#93813) */
-		_vz_logger(ctx, LOG_DEBUG, "%s", p);
+		if (ctx->filter == NULL) {
+			if (sz > *size)
+				return _vz_error(ctx, VZS_ERR_TOOLONG, 
+					"vzsock_recv : too long data (%s bytes)",
+					sz);
+			*size = sz;
+			memcpy(data, buffer, *size);
+			return 0;
+		}
+		ret = ctx->filter(buffer, data, size);
+		if (ret == 0) {
+			return 0;
+		} else if (ret < 0) {
+			return VZS_ERR_FILTER;
+		}
 	}
-	if (reply)
-		strncpy(reply, p, size);
 	return 0;
-}
-
-int vzsock_send_srv_reply(
-		struct vzsock_ctx *ctx, 
-		void *conn, 
-		int code, 
-		char *reply) 
-{
-	char buffer[BUFSIZ+1];
-	struct vzs_handlers *handlers = (struct vzs_handlers *)ctx->handlers;
-
-	snprintf(buffer, sizeof(buffer), "|%d|%s", code, reply);
-	return handlers->send(ctx, conn, buffer, strlen(buffer)+1);
 }
 
 int vzsock_send_data(

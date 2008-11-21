@@ -6,7 +6,7 @@ CFLAGS = -g -Wall -fPIC -O0
 # -O2 -D_REENTRANT
 LDFLAGS += -L . -L /usr/kerberos/lib/
 
-INC = -I. -I/usr/include
+INC = -I. -I/usr/include -I/usr/kerberos/include
 
 INCLUDEDIR = usr/include/vz
 LIBDIR = usr/lib

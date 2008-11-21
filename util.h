@@ -146,7 +146,7 @@ int _vzs_recv_str(
 		int fd, 
 		char separator, 
 		char *data, 
-		size_t size);
+		size_t *size);
 
 int _vzs_check_exit_status(struct vzsock_ctx *ctx, char *task, int status);
 

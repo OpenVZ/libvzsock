@@ -48,7 +48,7 @@ static int recv_str(
 		void *conn, 
 		char separator, 
 		char *data, 
-		size_t size);
+		size_t *size);
 static int send_data(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
@@ -330,7 +330,7 @@ static int recv_str(
 		void *conn, 
 		char separator, 
 		char *data, 
-		size_t size)
+		size_t *size)
 {
 	struct sock_conn *cn = (struct sock_conn *)conn;
 
@@ -353,12 +353,14 @@ static int send_data(
 	socklen_t addr_len;
 	fd_set fds;
 	struct timeval tv;
+	size_t size;
 
 	if (data->addr == NULL)
 		return _vz_error(ctx, VZS_ERR_BAD_PARAM, "address not defined");
 
 	/* read reply with connection params (port) from server */
-	if ((rc = vzsock_read_srv_reply(ctx, conn, reply, sizeof(reply))))
+	size = sizeof(reply);
+	if ((rc = vzsock_recv_str(ctx, conn, reply, &size)))
 		return rc;
 
 	if (data->domain == PF_INET) {

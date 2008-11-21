@@ -35,6 +35,7 @@ int server(struct vzsock_ctx *ctx, void *sock)
 			NULL};
 	char *p;
 	void *conn;
+	size_t size;
 
 	if ((rc = vzsock_accept_conn(ctx, sock, &conn))) {
 		syslog(LOG_ERR, "vzsock_accept_conn() return %d", rc);
@@ -42,7 +43,8 @@ int server(struct vzsock_ctx *ctx, void *sock)
 	}
 
 	/* read command from client */
-	if ((rc = vzsock_recv_str(ctx, conn, cmd, sizeof(cmd)))) {
+	size = sizeof(cmd);
+	if ((rc = vzsock_recv_str(ctx, conn, cmd, &size))) {
 		syslog(LOG_ERR, "vzsock_recv_str() return %d", rc);
 		return rc;
 	}
@@ -53,13 +55,14 @@ int server(struct vzsock_ctx *ctx, void *sock)
 		return -1;
 	}
 	/* send acknowledgement */
-	if ((rc = vzsock_send_srv_reply(ctx, conn, 0, CMD_ACK))) {
-		syslog(LOG_ERR, "vzsock_send_srv_reply() return %d", rc);
+	if ((rc = vzsock_send(ctx, conn, CMD_ACK, strlen(CMD_ACK)+1))) {
+		syslog(LOG_ERR, "vzsock_send() return %d", rc);
 		return rc;
 	}
 
 	while(1) {
-		if ((rc = vzsock_recv_str(ctx, conn, cmd, sizeof(cmd)))) {
+		size = sizeof(cmd);
+		if ((rc = vzsock_recv_str(ctx, conn, cmd, &size))) {
 			syslog(LOG_ERR, "vzsock_recv_str() return %d", rc);
 			return rc;
 		}
@@ -68,14 +71,14 @@ int server(struct vzsock_ctx *ctx, void *sock)
 			return rc;
 		}
 		if (strncmp(cmd, CMD_CLOSE, strlen(CMD_CLOSE)) == 0) {
-			if ((rc = vzsock_send_srv_reply(ctx, conn, 0, CMD_ACK))) {
-				syslog(LOG_ERR, "vzsock_send_srv_reply() return %d", rc);
+			if ((rc = vzsock_send(ctx, conn, CMD_ACK, strlen(CMD_ACK)+1))) {
+				syslog(LOG_ERR, "vzsock_send() return %d", rc);
 				return rc;
 			}
 			break;
 		} else if (strncmp(cmd, CMD_COPY, strlen(CMD_COPY)) == 0) {
-			if ((rc = vzsock_send_srv_reply(ctx, conn, 0, CMD_ACK))) {
-				syslog(LOG_ERR, "vzsock_send_srv_reply() return %d", rc);
+			if ((rc = vzsock_send(ctx, conn, CMD_ACK, strlen(CMD_ACK)+1))) {
+				syslog(LOG_ERR, "vzsock_send() return %d", rc);
 				return rc;
 			}
 			/* get target path from command */
@@ -87,8 +90,10 @@ int server(struct vzsock_ctx *ctx, void *sock)
 				return rc;
 			}
 		} else {
-			if ((rc = vzsock_send_srv_reply(ctx, conn, 0, CMD_REJECT))) {
-				syslog(LOG_ERR, "vzsock_send_srv_reply() return %d", rc);
+			if ((rc = vzsock_send(ctx, conn, 
+					CMD_REJECT, strlen(CMD_REJECT)+1)))
+			{
+				syslog(LOG_ERR, "vzsock_send() return %d", rc);
 				return rc;
 			}
 		}

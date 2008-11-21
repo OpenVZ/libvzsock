@@ -153,7 +153,7 @@ int main(int argc, char *argv[])
 	strncpy(progname, basename(argv[0]), sizeof(progname));
 	parse_cmd_line(argc, argv);
 
-	if ((rc = vzsock_init(type, &ctx, NULL, NULL))) {
+	if ((rc = vzsock_init(type, &ctx))) {
 		syslog(LOG_ERR, "vzsock_init() return %d", rc);
 		return rc;
 	}

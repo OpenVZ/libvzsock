@@ -51,7 +51,7 @@ static int recv_str(
 		void *conn, 
 		char separator, 
 		char *data, 
-		size_t size);
+		size_t *size);
 static int send_data(
 		struct vzsock_ctx *ctx, 
 		void *conn,
@@ -468,23 +468,26 @@ static int recv_str(
 		void *conn, 
 		char separator, 
 		char *data, 
-		size_t size)
+		size_t *size)
 {
 	int rc = 0;
 	char * p;
 	int err;
 	struct ssl_conn *cn = (struct ssl_conn *)conn;
+	size_t sz = 0;
 
 	p = data;
 	while (1) {
 		rc = SSL_read(cn->ssl, p, 1);
 		if (rc > 0) {
+			sz += rc;
 			if (*p == separator) {
 				*p = '\0';
+				*size = sz;
 				return 0;
 			}
 			p++;
-			if (p >= data + size)
+			if (p >= data + *size)
 				return _vz_error(ctx, VZS_ERR_TOOLONG,
 					"SSL_read() : too long message"); 
 			continue;
@@ -533,12 +536,14 @@ static int send_data(
 	socklen_t addr_len;
 	fd_set fds;
 	struct timeval tv;
+	size_t size;
 
 	if (data->addr == NULL)
 		return _vz_error(ctx, VZS_ERR_BAD_PARAM, "address not defined");
 
 	/* read reply with connection params (port) from server */
-	if ((rc = vzsock_read_srv_reply(ctx, conn, reply, sizeof(reply))))
+	size = sizeof(reply);
+	if ((rc = vzsock_recv_str(ctx, conn, reply, &size)))
 		return rc;
 
 	if (data->domain == PF_INET) {

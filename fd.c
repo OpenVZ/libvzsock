@@ -46,7 +46,7 @@ static int recv_str(
 		void *conn, 
 		char separator, 
 		char *data, 
-		size_t size);
+		size_t *size);
 static int rcopy(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
@@ -224,7 +224,7 @@ static int recv_str(
 		void *conn, 
 		char separator, 
 		char *data, 
-		size_t size)
+		size_t *size)
 {
 	struct fd_conn *cn = (struct fd_conn *)conn;
 
@@ -250,6 +250,7 @@ static int wait_rcopy(
 	int i;
 	struct sigaction act;
 	struct sigaction old_act;
+	size_t size;
 
 	snprintf(path, sizeof(path), "%s/pidfile.XXXXXX", ctx->tmpdir);
 	if ((fd = mkstemp(path)) == -1)
@@ -265,11 +266,12 @@ static int wait_rcopy(
 		strncat(buffer, argv[i], sizeof(buffer)-strlen(buffer)-1);
 	}
 
-	if ((rc = vzsock_send_srv_reply(ctx, conn, 0, buffer)))
+	if ((rc = vzsock_send(ctx, conn, buffer, strlen(buffer)+1)))
 		return rc;
 
 	/* and wait reply */
-	if ((rc = vzsock_recv_str(ctx, conn, buffer, sizeof(buffer))))
+	size = sizeof(buffer);
+	if ((rc = vzsock_recv_str(ctx, conn, buffer, &size)))
 		return rc;
 	/* open() will lock until so long as anybody will write into fifo */
 	act.sa_flags = 0;
@@ -292,7 +294,8 @@ static int wait_rcopy(
 	_vz_set_nonblock(fd);
 
 	/* read pid from fifo */
-	if (_vzs_recv_str(ctx, fd, '\n', buffer, sizeof(buffer)) == 0)
+	size = sizeof(buffer);
+	if (_vzs_recv_str(ctx, fd, '\n', buffer, &size) == 0)
 			pid = atol(buffer);
 	close(fd);
 	unlink(path);
@@ -303,7 +306,7 @@ static int wait_rcopy(
 			sleep(1);
 	}
 	/* send acknowledgement */
-	if ((rc = vzsock_send_srv_reply(ctx, conn, 0, VZS_SYNC_MSG)))
+	if ((rc = vzsock_send(ctx, conn, VZS_SYNC_MSG, strlen(VZS_SYNC_MSG)+1)))
 		return rc;
 	_vz_logger(ctx, LOG_DEBUG, "continue ... %s", strerror(errno));
 	return 0;

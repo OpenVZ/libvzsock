@@ -444,12 +444,13 @@ int _vzs_recv_str(
 		int fd, 
 		char separator, 
 		char *data, 
-		size_t size)
+		size_t *size)
 {
 	int rc;
 	char * p;
 	fd_set fds;
 	struct timeval tv;
+	size_t sz = 0;
 
 	p = data;
 	*p = '\0';
@@ -459,18 +460,21 @@ int _vzs_recv_str(
 			errno = 0;
 			rc = read(fd, p, 1);
 			if (rc > 0) {
+				sz += rc;
 				if (*p == separator) {
 					*p = '\0';
+					*size = sz;
 					return 0;
 				}
 				p++;
-				if (p >= data + size)
+				if (p >= data + *size)
 					return _vz_error(ctx, VZS_ERR_TOOLONG, 
 						"recv_str : too long message");
 				continue;
 			} else if (rc == 0) {
 				/* end of file */
 				*p = '\0';
+				*size = sz;
 				return 0;
 			}
 			if (errno == EAGAIN)

@@ -53,7 +53,7 @@ struct vzs_handlers {
 			void *conn, 
 			char separator, 
 			char *data, 
-			size_t size);
+			size_t *size);
 	int (*send_data)(
 			struct vzsock_ctx *ctx, 
 			void *conn, 

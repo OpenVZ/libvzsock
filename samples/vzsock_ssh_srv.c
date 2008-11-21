@@ -29,7 +29,7 @@ int main(int argc, const char *argv[])
 
 	openlog("vzs_ssh_srv", LOG_PID, LOG_USER);
 
-	if ((rc = vzsock_init(VZSOCK_FD, &ctx, NULL, NULL))) {
+	if ((rc = vzsock_init(VZSOCK_FD, &ctx))) {
 		syslog(LOG_ERR, "vzsock_init() return %d", rc);
 		return -1;
 	}

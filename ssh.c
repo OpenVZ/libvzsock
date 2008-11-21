@@ -54,7 +54,7 @@ static int recv_str(
 		void *conn, 
 		char separator, 
 		char *data, 
-		size_t size);
+		size_t *size);
 static int rcopy(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
@@ -595,7 +595,7 @@ static int recv_str(
 		void *conn, 
 		char separator, 
 		char *data, 
-		size_t size)
+		size_t *size)
 {
 	struct ssh_conn *cn = (struct ssh_conn *)conn;
 
@@ -797,40 +797,20 @@ static int rcopy(struct vzsock_ctx *ctx, void *conn, char * const *argv)
 {
 	int rc;
 	char reply[BUFSIZ];
+	size_t size;
 
 	/* read remote command from server */
-	if ((rc = vzsock_read_srv_reply(ctx, conn, reply, sizeof(reply))))
+	size = sizeof(reply);
+	if ((rc = vzsock_recv_str(ctx, conn, reply, &size)))
 		return rc;
 
 	if ((rc = _remote_rcopy(ctx, conn, reply, VZS_SYNC_MSG, argv)))
 		return rc;
 
 	/* and wait acknowledgement */
-	if ((rc = vzsock_read_srv_reply(ctx, conn, reply, sizeof(reply))))
+	size = sizeof(reply);
+	if ((rc = vzsock_recv_str(ctx, conn, reply, &size)))
 		return rc;
 	return 0;
 }
-#if 0
-/* remote copy, old vzmigrate mode */
-static int old_rcopy(
-		struct vzsock_ctx *ctx, 
-		void *conn, 
-		const char * pid_file,
-		const char * remote_cmd,
-		char * const *argv)
-{
-	int rc;
-	char reply[PATH_MAX];
-	char buffer[BUFSIZ];
-
-	/* read reply from server with target path */
-	if ((rc = vzsock_read_srv_reply(ctx, conn, reply, sizeof(reply))))
-		return 0;
-	snprintf(buffer, sizeof(buffer),
-		"echo $$ > %s/%s; tar -p -S --same-owner -x -C %s",
-		reply, pid_file, reply);
-
-	return _remote_rcopy(ctx, conn, remote_cmd, "ssh_started", argv);
-}
-#endif
 

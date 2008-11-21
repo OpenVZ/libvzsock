@@ -30,11 +30,12 @@ struct vzsock_ctx {
 	/* specific data */
 	void *data;
 	int debug;
-	int code; /* reply code from server side, used on client only */ 
+//	int code; /* reply code from server side, used on client only */ 
 	int errcode;
 	char errmsg[BUFSIZ];
 	int (*logger)(int level, const char *fmt, va_list pvar);
 	int (*readpwd)(const char *prompt, char *pass, size_t size);
+	int (*filter)(const char *buffer, char *data, size_t *size);
 	char tmpdir[PATH_MAX+1];
 	char password[BUFSIZ];
 	long tmo;
@@ -55,6 +56,9 @@ struct vzsock_ctx {
 #define VZSOCK_DATA_CAFILE	12 /* CA certificate file */
 #define VZSOCK_DATA_CAPATH	13 /* CA certificate path */
 #define VZSOCK_DATA_PASSWORD	14 /* password */
+#define VZSOCK_DATA_LOGGER	15 /* set logger function */
+#define VZSOCK_DATA_READPWD	16 /* set read password function */
+#define VZSOCK_DATA_FILTER	17 /* set read filter function */
  
 /* errors code */
 #define VZS_ERR_SYSTEM		1
@@ -64,16 +68,13 @@ struct vzsock_ctx {
 #define VZS_ERR_CONN_BROKEN	5
 #define VZS_ERR_TOOLONG		6 /* too long message */
 #define VZS_ERR_SSL		7 /* SSL error */
+#define VZS_ERR_FILTER		8 /* incoming messages filter error */
 
 #ifdef __cplusplus
 extern "C" {
 #endif 
 
-int vzsock_init(
-		int type, 
-		struct vzsock_ctx *ctx,
-		int (*logger)(int level, const char *fmt, va_list pvar),
-		int (*readpwd)(const char *prompt, char *pass, size_t size));
+int vzsock_init(int type, struct vzsock_ctx *ctx);
 int vzsock_open(struct vzsock_ctx *ctx);
 void vzsock_close(struct vzsock_ctx *ctx);
 int vzsock_set(struct vzsock_ctx *ctx, int type, void *data, size_t size);
@@ -102,26 +103,9 @@ int vzsock_recv(
 		void *conn,
 		char separator, 
 		char *data, 
-		size_t size);
+		size_t *size);
 #define vzsock_recv_str(ctx, conn, data, size) \
 		vzsock_recv((ctx), (conn), ('\0'), (data), (size))
-/* 
- To read reply from server(destination) side as |errcode|:replymessage
- NOTE: use only on client(source) side
- NOTE: you also can send debug/info/warning messages from destination node
-*/
-int vzsock_read_srv_reply(
-		struct vzsock_ctx *ctx, 
-		void *conn, 
-		char *reply, 
-		size_t size);
-
-int vzsock_send_srv_reply(
-		struct vzsock_ctx *ctx, 
-		void *conn, 
-		int code, 
-		char *reply); 
-
 /*  */
 int vzsock_send_data(
 		struct vzsock_ctx *ctx, 
