@@ -30,12 +30,12 @@ struct vzsock_ctx {
 	/* specific data */
 	void *data;
 	int debug;
-//	int code; /* reply code from server side, used on client only */ 
+	int code; /* reply code from server side, used on client only */ 
 	int errcode;
 	char errmsg[BUFSIZ];
 	int (*logger)(int level, const char *fmt, va_list pvar);
 	int (*readpwd)(const char *prompt, char *pass, size_t size);
-	int (*filter)(const char *buffer, char *data, size_t *size);
+	int (*filter)(const char *buffer, int *code, char *data, size_t *size);
 	char tmpdir[PATH_MAX+1];
 	char password[BUFSIZ];
 	long tmo;

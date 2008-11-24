@@ -146,7 +146,7 @@ int vzsock_set(struct vzsock_ctx *ctx, int type, void *data, size_t size)
 		ctx->readpwd = (int (*)(const char *, char *, size_t))data;
 		break;
 	case VZSOCK_DATA_FILTER:
-		ctx->filter = (int (*)(const char *, char *, size_t *))data;
+		ctx->filter = (int (*)(const char *, int *, char *, size_t *))data;
 		break;
 	default:
 		return handlers->set(ctx, type, data, size);
@@ -303,7 +303,7 @@ int vzsock_recv(
 			memcpy(data, buffer, *size);
 			return 0;
 		}
-		ret = ctx->filter(buffer, data, size);
+		ret = ctx->filter(buffer, &ctx->code, data, size);
 		if (ret == 0) {
 			return 0;
 		} else if (ret < 0) {
