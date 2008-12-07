@@ -98,13 +98,14 @@ int _vzs_ssh_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 /* open context: create test connection */
 static int open_ctx(struct vzsock_ctx *ctx)
 {
-	int rc;
+	struct ssh_data *data = (struct ssh_data *)ctx->data;
 
-	/* open and close test connection : to get password */
-	if ((rc = test_conn(ctx)))
-		return rc;
+	if (data->hostname == NULL)
+		return _vz_error(ctx, VZS_ERR_BAD_PARAM, 
+			"hostname does not specified");
 
-	return 0;
+	/* check password via test connection */
+	return test_conn(ctx);
 }
 
 static void close_ctx(struct vzsock_ctx *ctx)
@@ -189,24 +190,32 @@ static int get_args(
 	return 0;
 }
 
-
-/* create test ssh connection */
+/* So one context can open many connections, it's needs to know ssh password.
+   To get get password will use askpass script. This script will interact 
+   with this function via fifo.
+   Since ssh will not call this script if find public key in authorized_keys file,
+   and  open() on fifo will lock, call open() from separate task */ 
 static int test_conn(struct vzsock_ctx *ctx) 
 {
-	pid_t pid, chpid;
 	int rc = 0;
 	int status;
-	char tmpfile[PATH_MAX + 1];
-	char script[PATH_MAX + 1];
-	int td, sd;
-	FILE *fp;
+	pid_t pid, fpid, chpid;
+	fd_set fds;
+	char buffer[BUFSIZ];
+	int fd, sd;
+	FILE *sp;
+	int in[2], out[2], sig[2];
+	int fdmax;
+
+	char script[PATH_MAX+1];
+	char ififo[PATH_MAX+1];
+	char ofifo[PATH_MAX+1];
+
 	struct vzs_string_list ssh_argl;
 	char **ssh_argv;
 	int i;
 	struct ssh_data *data = (struct ssh_data *)ctx->data;
 
-	if (data->hostname == NULL)
-		return _vz_error(ctx, VZS_ERR_BAD_PARAM, "hostname does not specified");
 	_vzs_string_list_init(&ssh_argl);
 	if ((rc = get_args(ctx, &ssh_argl)))
 		return rc;
@@ -225,97 +234,187 @@ static int test_conn(struct vzsock_ctx *ctx)
 
 	_vzs_show_args(ctx, "establish test ssh channel: ", ssh_argv);
 
-	snprintf(tmpfile, sizeof(tmpfile), "%s/tmpfile.XXXXXX", ctx->tmpdir);
-	if ((td = mkstemp(tmpfile)) == -1) {
-		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "mkstemp(%s) : %m", tmpfile);
+	/* create input fifo */
+	snprintf(ififo, sizeof(ififo), "%s/ififo.XXXXXX", ctx->tmpdir);
+	if ((fd = mkstemp(ififo)) == -1) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "mkstemp(%s) : %m", ififo);
 		goto cleanup_1;
 	}
-	/* create script which will write ssh prompt to tmpfile */
-	snprintf(script, sizeof(script), "%s/askpass.XXXXXX", ctx->tmpdir);
-	if ((sd = mkstemp(script)) == -1) {
-		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "mkstemp(%s) : %m", script);
+	close(fd);
+	unlink(ififo);
+	if (mkfifo(ififo, S_IRUSR|S_IWUSR) < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "mkfifo(%s) : %m", ififo);
+		goto cleanup_1;
+	}
+
+	/* create output fifo */
+	snprintf(ofifo, sizeof(ofifo), "%s/ofifo.XXXXXX", ctx->tmpdir);
+	if ((fd = mkstemp(ofifo)) == -1) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "mkstemp(%s) : %m", ofifo);
+		goto cleanup_2;
+	}
+	close(fd);
+	unlink(ofifo);
+	if (mkfifo(ofifo, S_IRUSR|S_IWUSR) < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "mkfifo(%s) : %m", ofifo);
 		goto cleanup_2;
 	}
 
-	if ((fp = fdopen(sd, "w")) == NULL) {
+	/* create script */
+	snprintf(script, sizeof(script), "%s/script.XXXXXX", ctx->tmpdir);
+	if ((sd = mkstemp(script)) == -1) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "mkstemp(%s) : %m", script);
+		goto cleanup_3;
+	}
+	if ((sp = fdopen(sd, "w")) == NULL) {
 		close(sd);
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fdopen(%s) : %m", script);
-		goto cleanup_2;
+		goto cleanup_3;
 	}
-	fprintf(fp, "#!/bin/sh\necho \"$@\" > %s\n", tmpfile);
-	fclose(fp);
+	fprintf(sp, "#!/bin/sh\necho -n $@ >> %s\n", ififo);
+	fprintf(sp, "cat %s\n", ofifo);
+	fprintf(sp, "rm -f \"%s\"\n", ififo);
+	fprintf(sp, "rm -f \"%s\"\n", ofifo);
+	fprintf(sp, "rm -f \"%s\"\n", script);
+	fclose(sp);
 	close(sd);
 	chmod(script, S_IRUSR|S_IXUSR);
+
+	if ((pipe(in) < 0) || (pipe(out) < 0) || (pipe(sig) < 0)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "pipe() : %m");
+		goto cleanup_4;
+	}
+
+	fpid = fork();
+	if (fpid < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
+		goto cleanup_5;
+	} else if (fpid == 0) {
+		size_t size;
+		int ifd, ofd;
+
+		close(in[0]); close(out[1]);
+		close(sig[0]); close(sig[1]);
+		if ((ifd = open(ififo, O_RDONLY)) < 0) {
+			_vz_error(ctx, VZS_ERR_SYSTEM, "open() : %m");
+			exit(-1);
+		}
+		if ((size = read(ifd, buffer, sizeof(buffer))) < 0) {
+			_vz_error(ctx, VZS_ERR_SYSTEM, "read() : %m");
+			exit(-1);
+		}
+		close(ifd);
+		if (write(in[1], buffer, size) < 0) {
+			_vz_error(ctx, VZS_ERR_SYSTEM, "write() : %m");
+			exit(-1);
+		}
+
+		if ((size = read(out[0], buffer, sizeof(buffer))) < 0) {
+			_vz_error(ctx, VZS_ERR_SYSTEM, "read() : %m");
+			exit(-1);
+		}
+		if ((ofd = open(ofifo, O_WRONLY)) < 0) {
+			_vz_error(ctx, VZS_ERR_SYSTEM, "open() : %m");
+			exit(-1);
+		}
+		if (write(ofd, buffer, size) < 0) {
+			_vz_error(ctx, VZS_ERR_SYSTEM, "write() : %m");
+			exit(-1);
+		}
+		close(ofd);
+		pause();
+		exit(0);
+	}
 
 	chpid = fork();
 	if (chpid < 0) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
-		goto cleanup_3;
+		goto cleanup_6;
 	} else if (chpid == 0) {
-		int fd;
-		close(td);
-		fd = open("/dev/null", O_RDWR);
-		close(STDIN_FILENO); close(STDOUT_FILENO); close(STDERR_FILENO);
-		dup2(fd, STDIN_FILENO);
-		dup2(fd, STDOUT_FILENO);
-		dup2(fd, STDERR_FILENO);
-		close(fd);
+		int nfd;
+
+		close(in[1]); close(out[0]);
+		close(in[0]); close(out[1]);
+		close(sig[0]);
+		nfd = open("/dev/null", O_RDWR);
+		dup2(nfd, STDIN_FILENO);
+		dup2(nfd, STDOUT_FILENO);
+		dup2(nfd, STDERR_FILENO);
+		close(nfd);
 		setenv("DISPLAY", "dummy", 0);
 		setenv("SSH_ASKPASS", script, 1);
 		setsid();
 		execvp(ssh_argv[0], (char *const *)ssh_argv);
 		exit(VZS_ERR_SYSTEM);
 	}
-	
+	close(in[1]); close(out[0]);
+	close(sig[1]);
+
+	while ((pid = waitpid(fpid, &status, WNOHANG)) == -1)
+		if (errno != EINTR)
+			break;
+
+	if (pid < 0) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "waitpid() : %m");
+		goto cleanup_7;
+	}
+
+	do {
+		FD_ZERO(&fds);
+		FD_SET(in[0], &fds);
+		FD_SET(sig[0], &fds);
+		fdmax = (in[0] > sig[0]) ? in[0] : sig[0];
+		if (select(fdmax + 1, &fds, NULL, NULL, NULL) < 0) {
+			rc = _vz_error(ctx, VZS_ERR_SYSTEM, "select() : %m");
+			goto cleanup_7;
+		}
+		if (FD_ISSET(in[0], &fds)) {
+			if (read(in[0], buffer, sizeof(buffer)) < 0) {
+				rc = _vz_error(ctx, 
+					VZS_ERR_SYSTEM, "read() : %m");
+				goto cleanup_7;
+			}
+			_vzs_read_password(buffer, 
+				ctx->password, sizeof(ctx->password));
+			if (write(out[1], ctx->password, 
+					strlen(ctx->password)+1) < 0)
+			{
+				rc = _vz_error(ctx, 
+					VZS_ERR_SYSTEM, "write() : %m");
+				goto cleanup_7;
+			}
+			break;
+		} else if (FD_ISSET(sig[0], &fds)) {
+			/* main task completed without askpass */
+			break;
+		}
+	} while (1);
+
 	while ((pid = waitpid(chpid, &status, 0)) == -1)
 		if (errno != EINTR)
 			break;
 
 	if (pid < 0) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "waitpid() : %m");
-		goto cleanup_3;
+		goto cleanup_7;
 	}
 
-	if (WIFEXITED(status)) {
-		if (WEXITSTATUS(status)) {
-			/* public key auth failed, trying keyboard-interactive */
-			char prompt[BUFSIZ+1];
-			ssize_t nr;
+	rc = _vzs_check_exit_status(ctx, ssh_argv[0], status);
 
-			nr = read(td, prompt, sizeof(prompt));
-			if (nr < 0) {
-				rc = _vz_error(ctx, VZS_ERR_SYSTEM, 
-						"read(%s) : %m", tmpfile);
-				goto cleanup_3;
-			} else if (nr == 0) {
-				rc = _vz_error(ctx, VZS_ERR_CANT_CONNECT, 
-						"Can't connect");
-				goto cleanup_3;
-			}
-			prompt[nr-1] = '\0';
-			if (ctx->readpwd)
-				ctx->readpwd(prompt, 
-					ctx->password, sizeof(ctx->password));
-			else
-				_vzs_read_password(prompt, 
-					ctx->password, sizeof(ctx->password));
-		}
-	} else if (WIFSIGNALED(status)) {
-		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "Got signal %d", 
-				WTERMSIG(status));
-		goto cleanup_3;
-
-	} else {
-		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "%s exited with status %d",
-				ssh_argv[0], status);
-		goto cleanup_3;
-	}
-
-cleanup_3:
+cleanup_7:
+	kill(SIGSTOP, chpid);
+cleanup_6:
+	kill(SIGSTOP, fpid);
+cleanup_5:
+	close(in[0]); close(in[1]);
+	close(out[0]); close(out[1]);
+	close(sig[0]); close(sig[1]);
+cleanup_4:
 	unlink(script);
+cleanup_3:
+	unlink(ofifo);
 cleanup_2:
-	close(td);
-	unlink(tmpfile);
+	unlink(ififo);
 cleanup_1:
 	for (i = 0; ssh_argv[i]; i++)
 		free((void *)ssh_argv[i]);
@@ -337,11 +436,6 @@ static int generate_askpass(
 	const char *p;
 
 	path[0] = '\0';
-	if (ctx->password == NULL)
-		return 0;
-
-	if (strlen(ctx->password) == 0)
-		return 0;
 
 	snprintf(path, size, "%s/askpass.XXXXXX", ctx->tmpdir);
 	/* mkstemp set perms 0600 (glibc >= 2.0.7)*/

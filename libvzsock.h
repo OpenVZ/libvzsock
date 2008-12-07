@@ -38,6 +38,7 @@ struct vzsock_ctx {
 	int (*filter)(const char *buffer, int *code, char *data, size_t *size);
 	char tmpdir[PATH_MAX+1];
 	char password[BUFSIZ];
+	int lpassword; /* is password defined by vzsock_set() */
 	long tmo;
 };
 

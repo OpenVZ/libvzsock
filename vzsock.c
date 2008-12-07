@@ -52,6 +52,7 @@ int vzsock_init(int type, struct vzsock_ctx *ctx)
 	ctx->readpwd = NULL;
 	ctx->filter = NULL;
 	ctx->password[0] = '\0';
+	ctx->lpassword = 0;
 	ctx->tmo = VZSOCK_DEF_TMO;
  
 	/* create temporary directory (mkdtemp() will set perms 0700) */
@@ -147,6 +148,10 @@ int vzsock_set(struct vzsock_ctx *ctx, int type, void *data, size_t size)
 		break;
 	case VZSOCK_DATA_FILTER:
 		ctx->filter = (int (*)(const char *, int *, char *, size_t *))data;
+		break;
+	case VZSOCK_DATA_PASSWORD:
+		memcpy(ctx->password, data, size);
+		ctx->lpassword = 1;
 		break;
 	default:
 		return handlers->set(ctx, type, data, size);
