@@ -9,11 +9,13 @@
 #include <sys/types.h>
 #include <limits.h>
 
+#include "util.h"
 #include "libvzsock.h"
 #include "vzsock.h"
 
 struct ssh_data {
 	char *hostname;
+	struct vzs_string_list args;
 };
 
 struct ssh_conn {

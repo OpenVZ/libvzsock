@@ -91,6 +91,9 @@ size_t _vzs_string_list_size(struct vzs_string_list *ls);
 /* copy string list <ls> to string array <*a> */
 int _vzs_string_list_to_array(struct vzs_string_list *ls, char ***a);
 
+/* copy string array into string list */
+int _vzs_string_list_from_array(struct vzs_string_list *ls, char **a);
+
 /* copy string list <ls> to <buffer> */
 int _vzs_string_list_to_buf(
 		struct vzs_string_list *ls, 

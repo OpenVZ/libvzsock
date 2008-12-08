@@ -243,11 +243,24 @@ int _vzs_string_list_to_array(struct vzs_string_list *ls, char ***a)
 	if ((*a = (char **)calloc(sz + 1, sizeof(char *))) == NULL)
 		return VZS_ERR_SYSTEM;
 	for (p = ls->tqh_first, i = 0; p != NULL && i < sz; \
-				p = p->e.tqe_next, i++) {
+				p = p->e.tqe_next, i++) 
+	{
 		if (((*a)[i] = strdup(p->s)) == NULL)
 			return VZS_ERR_SYSTEM;
 	}
 	(*a)[sz] = NULL;
+
+	return 0;
+}
+
+/* copy string array into string list */
+int _vzs_string_list_from_array(struct vzs_string_list *ls, char **a)
+{
+	int rc, i;
+
+	for (i = 0; a[i]; i++)
+		if ((rc = _vzs_string_list_add(ls, a[i])))
+			return rc;
 
 	return 0;
 }
