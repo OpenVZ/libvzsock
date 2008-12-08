@@ -34,7 +34,6 @@ struct vzsock_ctx {
 	int errcode;
 	char errmsg[BUFSIZ];
 	int (*logger)(int level, const char *fmt, va_list pvar);
-	int (*readpwd)(const char *prompt, char *pass, size_t size);
 	int (*filter)(const char *buffer, int *code, char *data, size_t *size);
 	char tmpdir[PATH_MAX+1];
 	char password[BUFSIZ];
@@ -49,7 +48,7 @@ struct vzsock_ctx {
 #define VZSOCK_DATA_SOCK_DOMAIN	4 /* socket domain */
 #define VZSOCK_DATA_SOCK_TYPE	5 /* socket type */
 #define VZSOCK_DATA_SOCK_PROTO	6 /* socket protocol */
-#define VZSOCK_DATA_TMO	7 /* connection timeout */
+#define VZSOCK_DATA_TMO		7 /* connection timeout */
 #define VZSOCK_DATA_DEBUG	8 /* debug level */
 #define VZSOCK_DATA_CRTFILE	9 /* certificate file name */
 #define VZSOCK_DATA_KEYFILE	10 /* private key file name */
@@ -58,9 +57,8 @@ struct vzsock_ctx {
 #define VZSOCK_DATA_CAPATH	13 /* CA certificate path */
 #define VZSOCK_DATA_PASSWORD	14 /* password */
 #define VZSOCK_DATA_LOGGER	15 /* set logger function */
-#define VZSOCK_DATA_READPWD	16 /* set read password function */
-#define VZSOCK_DATA_FILTER	17 /* set read filter function */
-#define VZSOCK_DATA_ARGS	18 /* add arguments list */
+#define VZSOCK_DATA_FILTER	16 /* set read filter function */
+#define VZSOCK_DATA_ARGS	17 /* add arguments list */
  
 /* errors code */
 #define VZS_ERR_SYSTEM		1

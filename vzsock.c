@@ -49,7 +49,6 @@ int vzsock_init(int type, struct vzsock_ctx *ctx)
 	ctx->errcode = 0;
 	ctx->errmsg[0] = '\0';
 	ctx->logger = NULL;
-	ctx->readpwd = NULL;
 	ctx->filter = NULL;
 	ctx->password[0] = '\0';
 	ctx->lpassword = 0;
@@ -142,9 +141,6 @@ int vzsock_set(struct vzsock_ctx *ctx, int type, void *data, size_t size)
 		break;
 	case VZSOCK_DATA_LOGGER:
 		ctx->logger = (int (*)(int, const char *, va_list))data;
-		break;
-	case VZSOCK_DATA_READPWD:
-		ctx->readpwd = (int (*)(const char *, char *, size_t))data;
 		break;
 	case VZSOCK_DATA_FILTER:
 		ctx->filter = (int (*)(const char *, int *, char *, size_t *))data;
