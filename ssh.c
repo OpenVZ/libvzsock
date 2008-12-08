@@ -356,8 +356,10 @@ static int test_conn(struct vzsock_ctx *ctx)
 					VZS_ERR_SYSTEM, "read() : %m");
 				goto cleanup_7;
 			}
-			_vzs_read_password(buffer, 
-				ctx->password, sizeof(ctx->password));
+			if (!ctx->lpassword) {
+				_vzs_read_password(buffer, 
+					ctx->password, sizeof(ctx->password));
+			}
 			if (write(out[1], ctx->password, 
 					strlen(ctx->password)+1) < 0)
 			{
@@ -414,6 +416,9 @@ static int generate_askpass(
 	int fd;
 	FILE *fp;
 	const char *p;
+
+	if (strlen(ctx->password) == 0)
+		return 0;
 
 	path[0] = '\0';
 
@@ -699,6 +704,7 @@ static int _remote_rcopy(
 	int i;
 
 	/* if password is needs, create askpass file */
+	askpath[0] = '\0';
 	if ((rc = generate_askpass(ctx, askpath, sizeof(askpath))))
 		return rc;
 
