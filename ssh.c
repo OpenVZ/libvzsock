@@ -161,7 +161,7 @@ static int get_args(struct vzsock_ctx *ctx, char **cmd, char ***a)
 	size_t lsz, csz, i;
 
 	lsz = _vzs_string_list_size(&data->args);
-	for (csz = 0; cmd[i]; csz++) ; 
+	for (csz = 0; cmd[csz]; csz++) ; 
 
 	if ((*a = (char **)calloc(1 + lsz + 1 + csz + 1, 
 			sizeof(char *))) == NULL)
@@ -255,9 +255,6 @@ static int test_conn(struct vzsock_ctx *ctx)
 	}
 	fprintf(sp, "#!/bin/sh\necho -n $@ >> %s\n", ififo);
 	fprintf(sp, "cat %s\n", ofifo);
-	fprintf(sp, "rm -f \"%s\"\n", ififo);
-	fprintf(sp, "rm -f \"%s\"\n", ofifo);
-	fprintf(sp, "rm -f \"%s\"\n", script);
 	fclose(sp);
 	close(sd);
 	chmod(script, S_IRUSR|S_IXUSR);
@@ -277,6 +274,7 @@ static int test_conn(struct vzsock_ctx *ctx)
 
 		close(in[0]); close(out[1]);
 		close(sig[0]); close(sig[1]);
+		while (1) {
 		if ((ifd = open(ififo, O_RDONLY)) < 0) {
 			_vz_error(ctx, VZS_ERR_SYSTEM, "open() : %m");
 			exit(-1);
@@ -304,7 +302,7 @@ static int test_conn(struct vzsock_ctx *ctx)
 			exit(-1);
 		}
 		close(ofd);
-		pause();
+		}
 		exit(0);
 	}
 
@@ -367,7 +365,7 @@ static int test_conn(struct vzsock_ctx *ctx)
 					VZS_ERR_SYSTEM, "write() : %m");
 				goto cleanup_7;
 			}
-			break;
+//			break;
 		} else if (FD_ISSET(sig[0], &fds)) {
 			/* main task completed without askpass */
 			break;
@@ -380,15 +378,16 @@ static int test_conn(struct vzsock_ctx *ctx)
 
 	if (pid < 0) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "waitpid() : %m");
-		goto cleanup_7;
+		goto cleanup_6;
 	}
 
 	rc = _vzs_check_exit_status(ctx, argv[0], status);
+	goto cleanup_6;
 
 cleanup_7:
-	kill(SIGSTOP, chpid);
+	kill(chpid, SIGTERM);
 cleanup_6:
-	kill(SIGSTOP, fpid);
+	kill(fpid, SIGTERM);
 cleanup_5:
 	close(in[0]); close(in[1]);
 	close(out[0]); close(out[1]);
@@ -520,7 +519,11 @@ static int open_conn(struct vzsock_ctx *ctx, void *arg, void **conn)
 	cn->pid = ssh_pid;
 	cn->in = out[0];
 	cn->out = in[1];
-	goto cleanup_1;
+
+	for (i = 0; argv[i]; i++)
+		free((void *)argv[i]);
+	free((void *)argv);
+	return 0;
 
 cleanup_4:
 	close(in[0]); close(out[1]);
