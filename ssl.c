@@ -636,7 +636,7 @@ static int send_data(
 			goto cleanup_1;
 	}
 
-	_vzs_show_args(ctx, "run local task", argv);
+	_vzs_show_args(ctx, "", argv);
 
 
 	if ((pipe(in) < 0) || (pipe(out) < 0) || (pipe(err) < 0)) {
@@ -858,7 +858,7 @@ static int recv_data(
 		goto cleanup_5;
 #endif
 
-	_vzs_show_args(ctx, "run local task", argv);
+	_vzs_show_args(ctx, "", argv);
 
 	if ((chpid = fork()) < 0) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");

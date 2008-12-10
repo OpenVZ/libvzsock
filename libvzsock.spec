@@ -58,3 +58,8 @@ Virtuozzo transport API development library
 %changelog
 * Tue Aug  5 2008 krasnov@parallels.com  4.0.0-1
 - initial packaging
+
+* Wed Dec 10 2008 krasnov@parallels.com 4.0.0-2
+- some functions added
+- ##131684,131685,131686 fixed 
+

@@ -214,7 +214,7 @@ static int test_conn(struct vzsock_ctx *ctx)
 	if ((rc = get_args(ctx, cmd, &argv)))
 		return rc;
 
-	_vzs_show_args(ctx, "establish test ssh channel: ", argv);
+	_vzs_show_args(ctx, "", argv);
 
 	/* create input fifo */
 	snprintf(ififo, sizeof(ififo), "%s/ififo.XXXXXX", ctx->tmpdir);
@@ -467,7 +467,7 @@ static int open_conn(struct vzsock_ctx *ctx, void *arg, void **conn)
 	if ((rc = get_args(ctx, cmd, &argv)))
 		goto cleanup_0;
 
-	_vzs_show_args(ctx, "establish ssh channel: ", argv);
+	_vzs_show_args(ctx, "", argv);
 
 	/* if password is needs, create askpass file */
 	if ((rc = generate_askpass(ctx, cn->askfile, sizeof(cn->askfile))))
@@ -720,7 +720,7 @@ static int _remote_rcopy(
 	if ((rc = get_args(ctx, cmd, &ssh_argv)))
 		goto cleanup_1;
 
-	 _vzs_show_args(ctx, "establish ssh channel: ", ssh_argv);
+	 _vzs_show_args(ctx, "", ssh_argv);
 
 	ssh_pid = fork();
 	if (ssh_pid < 0) {
@@ -755,7 +755,7 @@ static int _remote_rcopy(
 		goto cleanup_3;
 	}
 
-	 _vzs_show_args(ctx, "run local task", task_argv);
+	 _vzs_show_args(ctx, "", task_argv);
 
 	task_pid = fork();
 	if (task_pid < 0) {

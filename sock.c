@@ -418,7 +418,7 @@ static int send_data(
 		} while (!FD_ISSET(sock, &fds));
 	}
 
-	_vzs_show_args(ctx, "run local task", argv);
+	_vzs_show_args(ctx, "", argv);
 
 	if ((chpid = fork()) < 0) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
@@ -547,7 +547,7 @@ static int recv_data(
 		} while (!FD_ISSET(srv_sock, &fds));
 	}
 
-	_vzs_show_args(ctx, "run local task", argv);
+	_vzs_show_args(ctx, "", argv);
 
 	if ((chpid = fork()) < 0) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");

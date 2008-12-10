@@ -552,6 +552,6 @@ void _vzs_show_args(
 		strncat(buffer, argv[i], sizeof(buffer)-strlen(buffer)-1);
 		strncat(buffer, " ", sizeof(buffer)-strlen(buffer)-1);
 	}
-	_vz_logger(ctx, LOG_DEBUG, "execute : %s", buffer);
+	_vz_logger(ctx, LOG_DEBUG, "%s", buffer);
 }
 
