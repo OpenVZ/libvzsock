@@ -56,7 +56,7 @@ Virtuozzo transport API development library
 %attr(644,root,root) %{_sampledir}/*
 
 %changelog
-* Sat Mar 21 2008 krasnov@parallels.com 4.0.0-3
+* Sat Mar 21 2009 krasnov@parallels.com 4.0.0-3
 - _accept() for socket fixed
 
 * Wed Dec 10 2008 krasnov@parallels.com 4.0.0-2
