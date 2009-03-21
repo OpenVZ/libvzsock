@@ -344,6 +344,9 @@ static int send_data(
 	fd_set fds;
 	struct timeval tv;
 	size_t size;
+	int perr[2];
+	FILE *fp;
+	char buffer[BUFSIZ];
 
 	if (data->addr == NULL)
 		return _vz_error(ctx, VZS_ERR_BAD_PARAM, "address not defined");
@@ -373,6 +376,11 @@ static int send_data(
 
 	if ((sock = socket(data->domain, data->type, data->protocol)) == -1)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "socket() : %m");
+
+	if (pipe(perr)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "pipe() : %m");
+		goto cleanup_0;
+	}
 
 	if (_vz_set_nonblock(sock)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fcntl() : %m");
@@ -414,15 +422,14 @@ static int send_data(
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
 		goto cleanup_0;
 	} else if (chpid == 0) {
-		int fd;
 		/* allow C-c for child */
 		signal(SIGINT, SIG_DFL);
 		dup2(sock, STDOUT_FILENO);
 		dup2(sock, STDIN_FILENO);
-		if ((fd = open("/dev/null", O_WRONLY)) != -1) {
-			close(STDERR_FILENO);
-			dup2(fd, STDERR_FILENO);
-		}
+		/* redirect stderr to pipe */
+		close(perr[0]);
+		dup2(perr[1], STDERR_FILENO);
+		close(perr[1]);
 		close(sock);
 		execvp(argv[0], (char *const *)argv);
 		exit(VZS_ERR_SYSTEM);
@@ -430,6 +437,18 @@ static int send_data(
 
 //	if ((rc = send(ctx, conn, sync_msg, strlen(sync_msg) + 1)))
 //		goto cleanup_4;
+
+	/* read stderr and put to log */
+	close(perr[1]);
+	if ((fp = fdopen(perr[0], "r")) != NULL) {
+		while(fgets(buffer, sizeof(buffer), fp)) {
+			if (buffer[strlen(buffer)-1] == '\n')
+				buffer[strlen(buffer)-1] = '\0';
+			_vz_logger(ctx, LOG_ERR, "%s", buffer);
+		}
+		fclose(fp);
+	}
+	close(perr[0]);
 
 	while ((pid = waitpid(chpid, &status, 0)) == -1)
 		if (errno != EINTR)
@@ -442,6 +461,7 @@ static int send_data(
 
 cleanup_0:
 	close(sock);
+	close(perr[0]); close(perr[1]);
 
 	return rc;
 }
@@ -461,9 +481,16 @@ static int recv_data(
 	struct timeval tv;
 	pid_t pid, chpid;
 	int status;
+	int perr[2];
+	FILE *fp;
 
 	if ((srv_sock = socket(data->domain, data->type, data->protocol)) == -1)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "socket() : %m");
+
+	if (pipe(perr)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "pipe() : %m");
+		goto cleanup_0;
+	}
 
 	if (_vz_set_nonblock(srv_sock)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fcntl() : %m");
@@ -543,16 +570,14 @@ static int recv_data(
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
 		goto cleanup_1;
 	} else if (chpid == 0) {
-		int fd;
 		/* allow C-c for child */
 		signal(SIGINT, SIG_DFL);
 		dup2(cli_sock, STDOUT_FILENO);
 		dup2(cli_sock, STDIN_FILENO);
-/* TODO: to log stderr */
-		if ((fd = open("/dev/null", O_WRONLY)) != -1) {
-			close(STDERR_FILENO);
-			dup2(fd, STDERR_FILENO);
-		}
+		/* redirect stderr to pipe */
+		close(perr[0]);
+		dup2(perr[1], STDERR_FILENO);
+		close(perr[1]);
 		close(cli_sock);
 		close(srv_sock);
 		execvp(argv[0], (char *const *)argv);
@@ -561,6 +586,18 @@ static int recv_data(
 // to send sync message ?
 //	if ((rc = send(ctx, conn, sync_msg, strlen(sync_msg) + 1)))
 //		goto cleanup_4;
+
+	/* read stderr and put to log */
+	close(perr[1]);
+	if ((fp = fdopen(perr[0], "r")) != NULL) {
+		while(fgets(buffer, sizeof(buffer), fp)) {
+			if (buffer[strlen(buffer)-1] == '\n')
+				buffer[strlen(buffer)-1] = '\0';
+			_vz_logger(ctx, LOG_ERR, "%s", buffer);
+		}
+		fclose(fp);
+	}
+	close(perr[0]);
 
 	while ((pid = waitpid(chpid, &status, 0)) == -1)
 		if (errno != EINTR)
@@ -575,6 +612,7 @@ cleanup_1:
 	close(cli_sock);
 cleanup_0:
 	close(srv_sock);
+	close(perr[0]); close(perr[1]);
 
 	return rc;
 }
