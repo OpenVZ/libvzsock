@@ -26,7 +26,7 @@ static void close_ctx(struct vzsock_ctx *ctx);
 static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size);
 static int get_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t *size);
 static int _connect(struct vzsock_ctx *ctx, void *data, void **conn);
-static int _accept(struct vzsock_ctx *ctx, void *srv_conn, void **conn);
+static int _accept(struct vzsock_ctx *ctx, void *sock, void **conn);
 static int is_open_conn(void *conn);
 static int close_conn(struct vzsock_ctx *ctx, void *conn);
 static int set_conn(struct vzsock_ctx *ctx, void *conn, 
@@ -233,24 +233,14 @@ cleanup_0:
 	return rc;
 }
 */
-static int _accept(struct vzsock_ctx *ctx, void *srv_conn, void **conn)
+static int _accept(struct vzsock_ctx *ctx, void *sock, void **conn)
 {
 	struct sock_conn *cn;
-	struct sock_conn *srv = (struct sock_conn *)srv_conn;
-	int sock;
-	struct sockaddr addr;
-	socklen_t addr_len;
-
-	addr_len = sizeof(addr);
-	if ((sock = accept(srv->sock, (struct sockaddr *)&addr, &addr_len)) == -1)
-		return _vz_error(ctx, VZS_ERR_SYSTEM, "accept() : %m");
 
 	if ((cn = (struct sock_conn *)malloc(sizeof(struct sock_conn))) == NULL)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
-	cn->sock = sock;
+	cn->sock = *((int *)sock);
 	*conn = cn;
-
-// TODO	_vz_logger(LOG_DEBUG, "Incoming connection from %s", inet_ntoa(addr.sin_addr));
 
 	return 0;
 }

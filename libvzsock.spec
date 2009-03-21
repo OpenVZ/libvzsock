@@ -5,7 +5,7 @@
 Summary: Virtuozzo transport API library
 Name: libvzsock
 Version: 4.0.0
-Release: 2
+Release: 3
 License: Parallels
 Group: System Environment/Libraries
 Source: libvzsock.tar.bz2
@@ -56,10 +56,12 @@ Virtuozzo transport API development library
 %attr(644,root,root) %{_sampledir}/*
 
 %changelog
+* Sat Mar 21 2008 krasnov@parallels.com 4.0.0-3
+- _accept() for socket fixed
+
 * Wed Dec 10 2008 krasnov@parallels.com 4.0.0-2
 - some functions added
 - ##131684,131685,131686 fixed 
 
 * Tue Aug  5 2008 krasnov@parallels.com  4.0.0-1
 - initial packaging
-
