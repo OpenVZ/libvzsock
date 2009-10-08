@@ -2,17 +2,17 @@
 %define _sampledir /usr/share/libvzsock/samples
 
 
-Summary: Virtuozzo transport API library
+Summary: Parallels Containers transport API library
 Name: libvzsock
-Version: 4.0.0
-Release: 3
+Version: 4.6.0
+Release: 1
 License: Parallels
 Group: System Environment/Libraries
 Source: libvzsock.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-root
 
 %description
-Virtuozzo transport API library
+Parallels Containers transport API library
 
 #{debug_package}
 
@@ -38,12 +38,12 @@ rm -rf $RPM_BUILD_ROOT
 %attr(755,root,root) %{_libdir}/%{name}.so.*
 
 %package devel
-Summary: Virtuozzo transport API development library
+Summary: Parallels Containers transport API development library
 Group: System Environment/Libraries
 Requires: %{name} = %{version}-%{release}
 
 %description devel
-Virtuozzo transport API development library
+Parallels Containers transport API development library
 
 %files devel
 %defattr(-,root,root)

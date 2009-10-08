@@ -43,7 +43,7 @@ char CApath[PATH_MAX + 1];
 
 static void usage()
 {
-	fprintf(stderr, "Virtuozzo vzmigrate daemon\n" \
+	fprintf(stderr, "Parallels Containers vzmigrate daemon\n" \
 "Usage:\n" \
 "%s [-v] [-t]\n" \
 "%s -h\n" \
