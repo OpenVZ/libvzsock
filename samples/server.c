@@ -28,7 +28,8 @@
 #include <sys/select.h>
 #include <stdlib.h>
 
-#include <vz/libvzsock.h>
+//#include <vz/libvzsock.h>
+#include <libvzsock.h>
 
 #include "sample.h"
 
@@ -139,13 +140,13 @@ int main(int argc, char *argv[])
 {
 	int rc = 0;
 
-//	int type = VZSOCK_SOCK;
-	int type = VZSOCK_SSL;
+	int type = VZSOCK_SOCK;
+//	int type = VZSOCK_SSL;
 	struct vzsock_ctx ctx;
 //	void *srv_conn, *conn;
+	struct addrinfo hints, *res, *ressave;
 	int srvsock, sock;
 
-	struct sockaddr_in addr;
 	pid_t pid;
 
 	openlog("vzsock_srv", LOG_PID, LOG_USER);
@@ -159,87 +160,104 @@ int main(int argc, char *argv[])
 	}
 	vzsock_set(&ctx, VZSOCK_DATA_DEBUG, (void *)&debug, sizeof(debug));
 
-	if (strlen(crtfile)) {
-		if ((rc = vzsock_set(&ctx, VZSOCK_DATA_CRTFILE, 
-				(void *)crtfile, strlen(crtfile)))) {
-			syslog(LOG_ERR, "vzsock_set() return %d", rc);
-			goto cleanup_0;
+	if (type == VZSOCK_SSL) {
+		if (strlen(crtfile)) {
+			if ((rc = vzsock_set(&ctx, VZSOCK_DATA_CRTFILE, (void *)crtfile, strlen(crtfile)))) {
+				syslog(LOG_ERR, "vzsock_set() return %d", rc);
+				goto cleanup_0;
+			}
+		}
+		if (strlen(keyfile)) {
+			if ((rc = vzsock_set(&ctx, VZSOCK_DATA_KEYFILE, (void *)keyfile, strlen(keyfile)))) {
+				syslog(LOG_ERR, "vzsock_set() return %d", rc);
+				goto cleanup_0;
+			}
+		}
+		if (strlen(ciphers)) {
+			if ((rc = vzsock_set(&ctx, VZSOCK_DATA_CIPHERS, (void *)ciphers, strlen(ciphers)))) {
+				syslog(LOG_ERR, "vzsock_set() return %d", rc);
+				goto cleanup_0;
+			}
+		}
+		if (strlen(CAfile)) {
+			if ((rc = vzsock_set(&ctx, VZSOCK_DATA_CAFILE, (void *)CAfile, strlen(CAfile)))) {
+				syslog(LOG_ERR, "vzsock_set() return %d", rc);
+				goto cleanup_0;
+			}
+		}
+		if (strlen(CApath)) {
+			if ((rc = vzsock_set(&ctx, VZSOCK_DATA_CAFILE, (void *)CApath, strlen(CApath)))) {
+				syslog(LOG_ERR, "vzsock_set() return %d", rc);
+				goto cleanup_0;
+			}
 		}
 	}
-	if (strlen(keyfile)) {
-		if ((rc = vzsock_set(&ctx, VZSOCK_DATA_KEYFILE, 
-				(void *)keyfile, strlen(keyfile)))) {
-			syslog(LOG_ERR, "vzsock_set() return %d", rc);
-			goto cleanup_0;
-		}
-	}
-	if (strlen(ciphers)) {
-		if ((rc = vzsock_set(&ctx, VZSOCK_DATA_CIPHERS, 
-				(void *)ciphers, strlen(ciphers)))) {
-			syslog(LOG_ERR, "vzsock_set() return %d", rc);
-			goto cleanup_0;
-		}
-	}
-	if (strlen(CAfile)) {
-		if ((rc = vzsock_set(&ctx, VZSOCK_DATA_CAFILE, 
-				(void *)CAfile, strlen(CAfile)))) {
-			syslog(LOG_ERR, "vzsock_set() return %d", rc);
-			goto cleanup_0;
-		}
-	}
-	if (strlen(CApath)) {
-		if ((rc = vzsock_set(&ctx, VZSOCK_DATA_CAFILE, 
-				(void *)CApath, strlen(CApath)))) {
-			syslog(LOG_ERR, "vzsock_set() return %d", rc);
-			goto cleanup_0;
-		}
-	}
-	addr.sin_family = AF_INET;
-	addr.sin_addr.s_addr = INADDR_ANY;
-	addr.sin_port = htons(VZSOCK_TEST_PORT);
-/*
-	if ((rc = vzsock_set(&ctx, VZSOCK_DATA_ADDR, 
-			(void *)&addr, sizeof(addr)))) 
-	{
-		syslog(LOG_ERR, "vzsock_set() return %d", rc);
-		goto cleanup_0;
-	}
-*/
+
 	if ((rc = vzsock_open(&ctx))) {
 		syslog(LOG_ERR, "vzsock_open() return %d", rc);
 		goto cleanup_0;
 	}
 
-	if ((srvsock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
-		rc = -1;
-		syslog(LOG_ERR, "socket() : %m");
+	memset(&hints, 0, sizeof(struct addrinfo));
+	/*
+	   AI_PASSIVE flag: the resulting address is used to bind
+	   to a socket for accepting incoming connections.
+	   So, when the hostname==NULL, getaddrinfo function will
+	   return one entry per allowed protocol family containing
+	   the unspecified address for that family.
+	*/
+	hints.ai_flags    = AI_PASSIVE;
+	hints.ai_family   = AF_INET6;
+	hints.ai_socktype = SOCK_STREAM;
+
+	if ((rc = getaddrinfo(NULL, VZSOCK_TEST_PORT, &hints, &ressave))) {
+		syslog(LOG_ERR, "getaddrinfo error: [%s]\n", gai_strerror(rc));
 		goto cleanup_0;
 	}
 
-	if (bind(srvsock, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+	/*
+	   Try open socket with each address getaddrinfo returned,
+	   until getting a valid listening socket.
+	*/
+	srvsock = -1;
+	for (res = ressave; res; res = res->ai_next) {
+		srvsock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+		if (srvsock < 0)
+			continue;
+		if (bind(srvsock, res->ai_addr, res->ai_addrlen) == 0)
+			break;
+		close(srvsock);
+		srvsock = -1;
+	}
+	if (srvsock < 0) {
 		rc = -1;
-		syslog(LOG_ERR, "bind() : %m");
+		syslog(LOG_ERR, "socket error:: could not open socket\n");
 		goto cleanup_1;
+	}
+	if ((rc = vzsock_set(&ctx, VZSOCK_DATA_SOCK_TYPE, (void *)&res->ai_socktype, sizeof(res->ai_socktype)))) {
+		syslog(LOG_ERR, "vzsock_set() return %d", rc);
+		goto cleanup_2;
+	}
+	if ((rc = vzsock_set(&ctx, VZSOCK_DATA_SOCK_PROTO, (void *)&res->ai_protocol, sizeof(res->ai_protocol)))) {
+		syslog(LOG_ERR, "vzsock_set() return %d", rc);
+		goto cleanup_2;
 	}
 
 	if (listen(srvsock, SOMAXCONN)) {
 		rc = -1;
 		syslog(LOG_ERR, "listen() : %m");
-		goto cleanup_1;
+		goto cleanup_2;
 	}
 
 	syslog(LOG_INFO, "Started");
 	while (1) {
-		struct sockaddr c_addr;
-		socklen_t addr_len;
-
-		addr_len = sizeof(c_addr);
-		if ((sock = accept(srvsock, 
-			(struct sockaddr *)&c_addr, &addr_len)) == -1)
+		struct sockaddr_storage c_addr;
+		socklen_t addr_len = sizeof(c_addr);
+		if ((sock = accept(srvsock, (struct sockaddr *)&c_addr, &addr_len)) == -1)
 		{
 			rc = -1;
 			syslog(LOG_ERR, "accept() : %m");
-			goto cleanup_1;
+			goto cleanup_2;
 		}
 
 		pid = fork();
@@ -253,8 +271,11 @@ int main(int argc, char *argv[])
 		close(sock);
 	}
 
-cleanup_1:
+cleanup_2:
 	close(srvsock);
+
+cleanup_1:
+	freeaddrinfo(ressave);
 
 cleanup_0:
 	vzsock_close(&ctx);

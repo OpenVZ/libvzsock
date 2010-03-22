@@ -5,7 +5,7 @@
 Summary: Parallels Containers transport API library
 Name: libvzsock
 Version: 4.6.0
-Release: 1
+Release: 2
 License: Parallels
 Group: System Environment/Libraries
 Source: libvzsock.tar.bz2
@@ -56,6 +56,9 @@ Parallels Containers transport API development library
 %attr(644,root,root) %{_sampledir}/*
 
 %changelog
+* Mon Mar 22 2010 krasnov@parallels.com 4.6.0-2
+- IPv6 support for socket was added
+
 * Sat Mar 21 2009 krasnov@parallels.com 4.0.0-3
 - _accept() for socket fixed
 

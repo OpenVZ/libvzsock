@@ -13,7 +13,7 @@
 #define CMD_COPY "copy"
 #define CMD_REJECT "reject"
 
-#define VZSOCK_TEST_PORT 4422
+#define VZSOCK_TEST_PORT "4422"
 
 int server(struct vzsock_ctx *ctx, void *conn);
 

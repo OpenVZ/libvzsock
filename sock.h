@@ -19,8 +19,8 @@ struct sock_data {
 	int domain;
 	int type;
 	int protocol;
-	struct sockaddr *addr;
-	socklen_t addr_len;
+	char *hostname;
+	char *service;
 };
 
 struct sock_conn {

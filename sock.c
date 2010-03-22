@@ -66,14 +66,17 @@ int _vzs_sock_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	if ((data = (struct sock_data *)malloc(sizeof(struct sock_data))) == NULL)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
 
-	data->domain = AF_INET;
+	data->domain = AF_INET6;
 	data->type = SOCK_STREAM;
 	data->protocol = IPPROTO_TCP;
-	data->addr = NULL;
-	data->addr_len = 0;
+	data->hostname = NULL;
+	data->service = NULL;
 
 	ctx->type = VZSOCK_SOCK;
 	ctx->data = (void *)data;
+	data->domain = AF_INET;
+	data->type = SOCK_STREAM;
+	data->protocol = IPPROTO_TCP;
 
 	handlers->open = open_ctx;
 	handlers->close = close_ctx;
@@ -104,8 +107,10 @@ static void close_ctx(struct vzsock_ctx *ctx)
 {
 	struct sock_data *data = (struct sock_data *)ctx->data;
 
-	if (data->addr)
-		free(data->addr);
+	if (data->hostname)
+		free(data->hostname);
+	if (data->service)
+		free(data->service);
 
 	free(ctx->data);
 	ctx->data = NULL;
@@ -119,34 +124,31 @@ static int set_ctx(struct vzsock_ctx *ctx, int type, void *data, size_t size)
 
 	switch (type) {
 	case VZSOCK_DATA_SOCK_DOMAIN:
-	{
 		/* set socket domain */
 		memcpy(&sockdata->domain, data, sizeof(sockdata->domain));
 		break;
-	}
 	case VZSOCK_DATA_SOCK_TYPE:
-	{
 		/* set socket type */
 		memcpy(&sockdata->type, data, sizeof(sockdata->type));
 		break;
-	}
 	case VZSOCK_DATA_SOCK_PROTO:
-	{
 		/* set socket protocol */
 		memcpy(&sockdata->protocol, data, sizeof(sockdata->protocol));
 		break;
-	}
-	case VZSOCK_DATA_ADDR:
-	{
-		if (sockdata->addr)
-			free((void *)sockdata->addr);
+	case VZSOCK_DATA_HOSTNAME:
+		if (sockdata->hostname)
+			free((void *)sockdata->hostname);
 
-		if ((sockdata->addr = (struct sockaddr *)malloc(size)) == NULL)
-			return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
-		memcpy(sockdata->addr, data, size);
-		sockdata->addr_len = (socklen_t)size;
+		if ((sockdata->hostname = strdup((const char *)data)) == NULL)
+			return _vz_error(ctx, VZS_ERR_SYSTEM, "strdup() : %m");
 		break;
-	}
+	case VZSOCK_DATA_SERVICE:
+		if (sockdata->service)
+			free((void *)sockdata->service);
+
+		if ((sockdata->service = strdup((const char *)data)) == NULL)
+			return _vz_error(ctx, VZS_ERR_SYSTEM, "strdup() : %m");
+		break;
 	default:
 		return _vz_error(ctx, VZS_ERR_BAD_PARAM, 
 			"Unknown data type : %d", type);
@@ -164,33 +166,52 @@ static int _connect(struct vzsock_ctx *ctx, void *unused, void **conn)
 	int rc = 0;
 	struct sock_data *data = (struct sock_data *)ctx->data;
 	struct sock_conn *cn;
+	struct addrinfo hints;
+	struct addrinfo *ai;
+	struct addrinfo *ailist;
 
-	if (data->addr == NULL)
-		return _vz_error(ctx, VZS_ERR_BAD_PARAM, "address not defined");
+	if (data->hostname == NULL)
+		return _vz_error(ctx, VZS_ERR_BAD_PARAM, "hostname not defined");
 
 	if ((cn = (struct sock_conn *)malloc(sizeof(struct sock_conn))) == NULL)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
 
-	if ((cn->sock = socket(data->domain, data->type, data->protocol)) == -1) {
-		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "socket() : %m");
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	if ((rc = getaddrinfo(data->hostname, data->service, &hints, &ailist))) {
+		fprintf(stderr, "getaddrinfo(\"%s\", \"%s\", ...) error : [%s]\n",
+			data->hostname, data->service, gai_strerror(rc));
 		goto cleanup_0;
 	}
 
-	if (connect(cn->sock, data->addr, data->addr_len) == -1) {
-		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "connect() : %m");
-		goto cleanup_0;
-	}
+	cn->sock = -1;
+	for (ai = ailist; ai; ai = ai->ai_next) {
+		cn->sock = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
 
-	if (_vz_set_nonblock(cn->sock)) {
-		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fcntl() : %m");
+		if (!(cn->sock < 0)) {
+			if (connect(cn->sock, ai->ai_addr, ai->ai_addrlen) == 0)
+				break;
+			close(cn->sock);
+			cn->sock = -1;
+		}
+	}
+	if (cn->sock == -1) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "can not connect to host %s service %s", data->hostname, data->service);
 		goto cleanup_1;
 	}
+	data->domain = ai->ai_family;
+	data->type = ai->ai_socktype;
+	data->protocol = ai->ai_protocol;
 
+	freeaddrinfo(ailist);
 	*conn = cn;
 	return 0;
-cleanup_1:
+cleanup_2:
 	close(cn->sock);
 	cn->sock = -1;
+cleanup_1:
+	freeaddrinfo(ailist);
 cleanup_0:
 	free((void *)cn);
 	return rc;
@@ -236,10 +257,17 @@ cleanup_0:
 static int _accept(struct vzsock_ctx *ctx, void *sock, void **conn)
 {
 	struct sock_conn *cn;
+	struct sock_data *data = (struct sock_data *)ctx->data;
+	struct sockaddr_storage addr;
+	socklen_t addr_len = sizeof(addr);
 
 	if ((cn = (struct sock_conn *)malloc(sizeof(struct sock_conn))) == NULL)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
 	cn->sock = *((int *)sock);
+	if (getsockname(cn->sock, (struct sockaddr *)&addr, &addr_len))
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "getsockname() : %m");
+	data->domain = addr.ss_family;
+/* TODO : to get socktype and protocol from socket */
 	*conn = cn;
 
 	return 0;
@@ -296,6 +324,8 @@ static int _send(
 		size_t size)
 {
 	struct sock_conn *cn = (struct sock_conn *)conn;
+	if (cn == NULL)
+		return _vz_error(ctx, VZS_ERR_CONN_BROKEN, "connection does not opened");
 
 	return _vzs_writefd(ctx, cn->sock, data, size, 0);
 }
@@ -307,6 +337,8 @@ static int _send_err_msg(
 		size_t size)
 {
 	struct sock_conn *cn = (struct sock_conn *)conn;
+	if (cn == NULL)
+		return _vz_error(ctx, VZS_ERR_CONN_BROKEN, "connection does not opened");
 
 	return _vzs_writefd(ctx, cn->sock, data, size, 1);
 }
@@ -323,10 +355,13 @@ static int recv_str(
 		size_t *size)
 {
 	struct sock_conn *cn = (struct sock_conn *)conn;
+	if (cn == NULL)
+		return _vz_error(ctx, VZS_ERR_CONN_BROKEN, "connection does not opened");
 
 	return _vzs_recv_str(ctx, cn->sock, separator, data, size);
 }
 
+/* connect to server, get socket, fork child process and redirect process stdin & stdout into socket */
 static int send_data(
 		struct vzsock_ctx *ctx, 
 		void *conn, 
@@ -336,42 +371,45 @@ static int send_data(
 	pid_t chpid, pid;
 	int status;
 	struct sock_data *data = (struct sock_data *)ctx->data;
-//	struct sock_conn *cn = (struct sock_conn *)conn;
+	struct sock_conn *cn = (struct sock_conn *)conn;
 	int sock;
 	char reply[BUFSIZ];
-	struct sockaddr addr;
-	socklen_t addr_len;
 	fd_set fds;
 	struct timeval tv;
 	size_t size;
 	int perr[2];
 	FILE *fp;
 	char buffer[BUFSIZ];
+	int port;
+	char *ptr;
+	struct sockaddr_storage addr;
+	socklen_t addr_len = sizeof(addr);
 
-	if (data->addr == NULL)
-		return _vz_error(ctx, VZS_ERR_BAD_PARAM, "address not defined");
+	if (cn == NULL)
+		return _vz_error(ctx, VZS_ERR_CONN_BROKEN, "connection does not opened");
 
 	/* read reply with connection params (port) from server */
 	size = sizeof(reply);
 	if ((rc = vzsock_recv_str(ctx, conn, reply, &size)))
 		return rc;
 
-	if (data->domain == PF_INET) {
-		/* read port from server reply */
-		struct sockaddr_in *saddr = (struct sockaddr_in *)&addr;
-		int port;
-		char *ptr;
-		port = strtol(reply, &ptr, 10);
-		if (*ptr != '\0')
-			return _vz_error(ctx, VZS_ERR_CONN_BROKEN, 
-				"send data : invalid server port number : %s",
-				 reply);
+	/* read port from server reply */
+	port = strtol(reply, &ptr, 10);
+	if (*ptr != '\0')
+		return _vz_error(ctx, VZS_ERR_CONN_BROKEN, "send data : invalid server port number : %s", reply);
+
+	/* get address of main connection and replace port */
+	if (getsockname(cn->sock, (struct sockaddr *)&addr, &addr_len))
+		return _vz_error(ctx, VZS_ERR_SYSTEM, "getsockname() : %m");
+	if (addr.ss_family == AF_INET) {
+		((struct sockaddr_in *)&addr)->sin_port = htons(port);
 		addr_len = sizeof(struct sockaddr_in);
-		memcpy(saddr, data->addr, addr_len);
-		saddr->sin_port = htons(port);
+	} else if (addr.ss_family == AF_INET6) {
+		((struct sockaddr_in6 *)&addr)->sin6_port = htons(port);
+		addr_len = sizeof(struct sockaddr_in6);
 	} else {
-		return _vz_error(ctx, VZS_ERR_SYSTEM, "can't send data for "
-			"this communication domain (%d)", data->domain);
+		return _vz_error(ctx, VZS_ERR_SYSTEM,
+			"can't send data for this communication domain (%d)", addr.ss_family);
 	}
 
 	if ((sock = socket(data->domain, data->type, data->protocol)) == -1)
@@ -382,13 +420,8 @@ static int send_data(
 		goto cleanup_0;
 	}
 
-	if (_vz_set_nonblock(sock)) {
-		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fcntl() : %m");
-		goto cleanup_0;
-	}
-
 	while(1) {
-		if (connect(sock, &addr, addr_len) == 0)
+		if (connect(sock, (struct sockaddr *)&addr, addr_len) == 0)
 			break;
 		if (errno == EINTR) {
 			continue;
@@ -474,8 +507,9 @@ static int recv_data(
 	int rc = 0;
 	struct sock_data *data = (struct sock_data *)ctx->data;
 	int srv_sock, cli_sock;
-	struct sockaddr srv_addr, cli_addr;
-	socklen_t srv_addr_len, cli_addr_len;
+	struct sockaddr_storage srv_addr, cli_addr;
+	socklen_t srv_addr_len = sizeof(srv_addr);
+	socklen_t cli_addr_len = sizeof(cli_addr);
 	char buffer[BUFSIZ];
 	fd_set fds;
 	struct timeval tv;
@@ -492,35 +526,30 @@ static int recv_data(
 		goto cleanup_0;
 	}
 
-	if (_vz_set_nonblock(srv_sock)) {
-		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fcntl() : %m");
-		goto cleanup_0;
-	}
-
-	/* will listen on random free port with 
-	   the local address set to INADDR_ANY */
+	/* will listen on random free port with the local address set to INADDR_ANY */
 /* TODO: PF_UNIX ? */
 	if (listen(srv_sock, SOMAXCONN)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "listen() : %m");
 		goto cleanup_0;
 	}
-	
-	srv_addr_len = sizeof(struct sockaddr);
-	if (getsockname(srv_sock, &srv_addr, &srv_addr_len)) {
+
+	/* get port number and send to other side */
+	if (getsockname(srv_sock, (struct sockaddr *)&srv_addr, &srv_addr_len)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "getsockname() : %m");
 		goto cleanup_0;
 	}
-	if (data->domain == PF_INET) {
-		/* send port number to client */
-		snprintf(buffer, sizeof(buffer), "%d", 
-			ntohs(((struct sockaddr_in *)&srv_addr)->sin_port));
-		if ((rc = _send(ctx, conn, buffer, strlen(buffer) + 1)))
-			goto cleanup_0;
+	if (srv_addr.ss_family == AF_INET) {
+		snprintf(buffer, sizeof(buffer), "%d", ntohs(((struct sockaddr_in *)&srv_addr)->sin_port));
+	} else if (srv_addr.ss_family == AF_INET6) {
+		snprintf(buffer, sizeof(buffer), "%d", ntohs(((struct sockaddr_in6 *)&srv_addr)->sin6_port));
 	} else {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "can't receive data for "
-			"this communication domain (%d)", data->domain);
+			"this communication domain (%d)", srv_addr.ss_family);
 		goto cleanup_0;
 	}
+	/* send port number to client */
+	if ((rc = _send(ctx, conn, buffer, strlen(buffer) + 1)))
+		goto cleanup_0;
 #if 0
 	/* wait and check reply */
 	if ((rc = vzsock_recv_str(ctx, cn, buffer, sizeof(buffer)))) {
@@ -535,8 +564,7 @@ static int recv_data(
 #endif
 	/* wait connection during timeout */
 	while(1) {
-		cli_addr_len = sizeof(cli_addr);
-		if ((cli_sock = accept(srv_sock, &cli_addr, &cli_addr_len)) >= 0)
+		if ((cli_sock = accept(srv_sock, (struct sockaddr *)&cli_addr, &cli_addr_len)) >= 0)
 			break;
 		if (errno == EINTR) {
 			continue;

@@ -5,6 +5,7 @@ OBJ = client.o vzsock_ssh_srv.o server.o common.o
 CFLAGS = -g -Wall -O0
 INC = -I../
 ARCH=$(shell uname -m)
+LDFLAGS += -L ../
 ifeq "${ARCH}" "x86_64"
 LDFLAGS += -L /usr/kerberos/lib64/
 else
@@ -19,8 +20,8 @@ ifeq "${MODE}" "test"
 LIBD = -Wl,-Bstatic -lvzsock -lssl -lcrypto \
 	-lkrb5 -lz \
 	-lk5crypto -lcom_err \
-	-Wl,-Bdynamic -lpthread -ldl -lresolv
-# -lgssapi_krb5 -lkrb5support
+	-Wl,-Bdynamic -lpthread -ldl -lresolv\
+	-lgssapi_krb5 -lkrb5support
 # -lkrb5support
 endif
 all:: ${PROGS}

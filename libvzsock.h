@@ -59,6 +59,7 @@ struct vzsock_ctx {
 #define VZSOCK_DATA_LOGGER	15 /* set logger function */
 #define VZSOCK_DATA_FILTER	16 /* set read filter function */
 #define VZSOCK_DATA_ARGS	17 /* add arguments list */
+#define VZSOCK_DATA_SERVICE	18 /* dst service(port) */
  
 /* errors code */
 #define VZS_ERR_SYSTEM		1
