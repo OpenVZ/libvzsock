@@ -207,9 +207,6 @@ static int _connect(struct vzsock_ctx *ctx, void *unused, void **conn)
 	freeaddrinfo(ailist);
 	*conn = cn;
 	return 0;
-cleanup_2:
-	close(cn->sock);
-	cn->sock = -1;
 cleanup_1:
 	freeaddrinfo(ailist);
 cleanup_0:
