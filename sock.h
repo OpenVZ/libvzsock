@@ -21,6 +21,9 @@ struct sock_data {
 	int protocol;
 	char *hostname;
 	char *service;
+	/* address of server - will use for client only */
+	size_t addrlen;
+	struct sockaddr_storage addr;
 };
 
 struct sock_conn {

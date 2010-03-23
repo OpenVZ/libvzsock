@@ -71,12 +71,11 @@ int _vzs_sock_init(struct vzsock_ctx *ctx, struct vzs_handlers *handlers)
 	data->protocol = IPPROTO_TCP;
 	data->hostname = NULL;
 	data->service = NULL;
+	data->addrlen = 0;
+	memset((void *)&data->addr, 0, sizeof(data->addr));
 
 	ctx->type = VZSOCK_SOCK;
 	ctx->data = (void *)data;
-	data->domain = AF_INET;
-	data->type = SOCK_STREAM;
-	data->protocol = IPPROTO_TCP;
 
 	handlers->open = open_ctx;
 	handlers->close = close_ctx;
@@ -200,13 +199,23 @@ static int _connect(struct vzsock_ctx *ctx, void *unused, void **conn)
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "can not connect to host %s service %s", data->hostname, data->service);
 		goto cleanup_1;
 	}
+	if (_vz_set_nonblock(cn->sock)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fcntl() : %m");
+		goto cleanup_2;
+	}
+
 	data->domain = ai->ai_family;
 	data->type = ai->ai_socktype;
 	data->protocol = ai->ai_protocol;
+	data->addrlen = ai->ai_addrlen;
+	memcpy((void *)&data->addr, (void *)ai->ai_addr, ai->ai_addrlen);
 
 	freeaddrinfo(ailist);
 	*conn = cn;
 	return 0;
+cleanup_2:
+	close(cn->sock);
+	cn->sock = -1;
 cleanup_1:
 	freeaddrinfo(ailist);
 cleanup_0:
@@ -256,16 +265,18 @@ static int _accept(struct vzsock_ctx *ctx, void *sock, void **conn)
 	struct sock_conn *cn;
 	struct sock_data *data = (struct sock_data *)ctx->data;
 	struct sockaddr_storage addr;
-	socklen_t addr_len = sizeof(addr);
+	socklen_t addrlen = sizeof(addr);
 
 	if ((cn = (struct sock_conn *)malloc(sizeof(struct sock_conn))) == NULL)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "malloc() : %m");
 	cn->sock = *((int *)sock);
-	if (getsockname(cn->sock, (struct sockaddr *)&addr, &addr_len))
+	if (getsockname(cn->sock, (struct sockaddr *)&addr, &addrlen))
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "getsockname() : %m");
 	data->domain = addr.ss_family;
 /* TODO : to get socktype and protocol from socket */
 	*conn = cn;
+//	if (_vz_set_nonblock(cn->sock))
+//		return _vz_error(ctx, VZS_ERR_SYSTEM, "fcntl() : %m");
 
 	return 0;
 }
@@ -396,8 +407,8 @@ static int send_data(
 		return _vz_error(ctx, VZS_ERR_CONN_BROKEN, "send data : invalid server port number : %s", reply);
 
 	/* get address of main connection and replace port */
-	if (getsockname(cn->sock, (struct sockaddr *)&addr, &addr_len))
-		return _vz_error(ctx, VZS_ERR_SYSTEM, "getsockname() : %m");
+	addr_len = data->addrlen;
+	memcpy((void *)&addr, (void *)&data->addr, data->addrlen);
 	if (addr.ss_family == AF_INET) {
 		((struct sockaddr_in *)&addr)->sin_port = htons(port);
 		addr_len = sizeof(struct sockaddr_in);
@@ -445,7 +456,6 @@ static int send_data(
 			}
 		} while (!FD_ISSET(sock, &fds));
 	}
-
 	_vzs_show_args(ctx, "", argv);
 
 	if ((chpid = fork()) < 0) {
@@ -588,7 +598,6 @@ static int recv_data(
 			}
 		} while (!FD_ISSET(srv_sock, &fds));
 	}
-
 	_vzs_show_args(ctx, "", argv);
 
 	if ((chpid = fork()) < 0) {
