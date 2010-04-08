@@ -423,6 +423,11 @@ static int send_data(
 	if ((sock = socket(data->domain, data->type, data->protocol)) == -1)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "socket() : %m");
 
+	if (ctx->tmo && _vz_set_nonblock(sock)) {
+		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fcntl() : %m");
+		goto cleanup_0;
+	}
+
 	if (pipe(perr)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "pipe() : %m");
 		goto cleanup_0;
@@ -528,7 +533,7 @@ static int recv_data(
 	if ((srv_sock = socket(data->domain, data->type, data->protocol)) == -1)
 		return _vz_error(ctx, VZS_ERR_SYSTEM, "socket() : %m");
 
-	if (_vz_set_nonblock(srv_sock)) {
+	if (ctx->tmo && _vz_set_nonblock(srv_sock)) {
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fcntl() : %m");
 		goto cleanup_0;
 	}

@@ -401,7 +401,6 @@ int _vzs_writefd(
 	int rc;
 	size_t sent;
 	fd_set fds;
-	struct timeval tv;
 
 	if (size == 0)
 		return 0;
@@ -430,9 +429,14 @@ int _vzs_writefd(
 		do {
 			FD_ZERO(&fds);
 			FD_SET(fd, &fds);
-			tv.tv_sec = ctx->tmo;
-			tv.tv_usec = 0;
-			rc = select(fd + 1, NULL, &fds, NULL, &tv);
+			if (ctx->tmo) {
+				struct timeval tv;
+				tv.tv_sec = ctx->tmo;
+				tv.tv_usec = 0;
+				rc = select(fd + 1, NULL, &fds, NULL, &tv);
+			} else {
+				rc = select(fd + 1, NULL, &fds, NULL, NULL);
+			}
 			if (rc == 0) {
 				_vz_def_logger(LOG_ERR, 
 					"timeout (%d sec)", ctx->tmo);
@@ -462,7 +466,6 @@ int _vzs_recv_str(
 	int rc;
 	char * p;
 	fd_set fds;
-	struct timeval tv;
 	size_t sz = 0;
 
 	p = data;
@@ -502,9 +505,14 @@ int _vzs_recv_str(
 		do {
 			FD_ZERO(&fds);
 			FD_SET(fd, &fds);
-			tv.tv_sec = ctx->tmo;
-			tv.tv_usec = 0;
-			rc = select(fd + 1, &fds, NULL, NULL, &tv);
+			if (ctx->tmo) {
+				struct timeval tv;
+				tv.tv_sec = ctx->tmo;
+				tv.tv_usec = 0;
+				rc = select(fd + 1, &fds, NULL, NULL, &tv);
+			} else {
+				rc = select(fd + 1, &fds, NULL, NULL, NULL);
+			}
 			if (rc == 0)
 				return _vz_error(ctx, VZS_ERR_TIMEOUT,
 					"recv_str : timeout (%d sec)", ctx->tmo);

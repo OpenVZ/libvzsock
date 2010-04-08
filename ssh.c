@@ -496,7 +496,12 @@ static int open_conn(struct vzsock_ctx *ctx, void *arg, void **conn)
 		close(in[1]); close(out[0]);
 		dup2(in[0], STDIN_FILENO);
 		dup2(out[1], STDOUT_FILENO);
+/*
+		Will not redirect stderr into out:
+		ssh halt if can not write on stderr and it's possible
+		that parent process not read from out in this time.
 		dup2(out[1], STDERR_FILENO);
+*/
 		close(in[0]); close(out[1]);
 		setenv("DISPLAY", "dummy", 0);
 		setenv("SSH_ASKPASS", cn->askfile, 1);
