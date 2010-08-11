@@ -44,7 +44,7 @@ char CApath[PATH_MAX + 1];
 
 static void usage()
 {
-	fprintf(stderr, "Parallels Containers vzmigrate daemon\n" \
+	fprintf(stderr, "@PRODUCT_NAME_LONG@ vzmigrate daemon\n" \
 "Usage:\n" \
 "%s [-v] [-t]\n" \
 "%s -h\n" \

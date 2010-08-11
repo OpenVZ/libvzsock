@@ -2,17 +2,17 @@
 %define _sampledir /usr/share/libvzsock/samples
 
 
-Summary: Parallels Containers transport API library
+Summary: @PRODUCT_NAME_LONG@ transport API library
 Name: libvzsock
-Version: 4.6.0
-Release: 2
+Version: 5.0.0
+Release: 0
 License: Parallels
 Group: System Environment/Libraries
 Source: libvzsock.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-root
 
 %description
-Parallels Containers transport API library
+@PRODUCT_NAME_LONG@ transport API library
 
 #{debug_package}
 
@@ -38,12 +38,12 @@ rm -rf $RPM_BUILD_ROOT
 %attr(755,root,root) %{_libdir}/%{name}.so.*
 
 %package devel
-Summary: Parallels Containers transport API development library
+Summary: @PRODUCT_NAME_LONG@ transport API development library
 Group: System Environment/Libraries
 Requires: %{name} = %{version}-%{release}
 
 %description devel
-Parallels Containers transport API development library
+@PRODUCT_NAME_LONG@ transport API development library
 
 %files devel
 %defattr(-,root,root)
