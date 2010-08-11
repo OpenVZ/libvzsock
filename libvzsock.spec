@@ -5,7 +5,7 @@
 Summary: @PRODUCT_NAME_LONG@ transport API library
 Name: libvzsock
 Version: 5.0.0
-Release: 0
+Release: 1
 License: Parallels
 Group: System Environment/Libraries
 Source: libvzsock.tar.bz2
