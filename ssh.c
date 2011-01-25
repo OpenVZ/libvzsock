@@ -16,6 +16,8 @@
 #include <sys/syslog.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 #include "libvzsock.h"
 #include "vzsock.h"
@@ -482,16 +484,6 @@ static int open_conn(struct vzsock_ctx *ctx, void *arg, void **conn)
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
 		goto cleanup_4;
 	} else if (ssh_pid == 0) {
-/*
-		struct rlimit flim;
-		unsigned int fdmax, fd;
-		if (getrlimit(RLIMIT_NOFILE, &flim) == -1)
-			fdmax = OPEN_MAX;
-		else
-			fdmax = flim.rlim_max;
-		for(fd = STDERR_FILENO+1; fd < fdmax; fd++)
-			close(fd);
-*/
 		/* redirect stdout to out and stdin to in */
 		close(in[1]); close(out[0]);
 		dup2(in[0], STDIN_FILENO);
@@ -502,7 +494,15 @@ static int open_conn(struct vzsock_ctx *ctx, void *arg, void **conn)
 		that parent process not read from out in this time.
 		dup2(out[1], STDERR_FILENO);
 */
-		close(in[0]); close(out[1]);
+		/* to close all unused descriptors */
+		int fdnum;
+		struct rlimit rlim;
+		if (getrlimit(RLIMIT_NOFILE, &rlim) == 0)
+			fdnum = (int)rlim.rlim_cur;
+		else
+			fdnum = 1024;
+		for (i = 3; i < fdnum; ++i)
+			close(i);
 		setenv("DISPLAY", "dummy", 0);
 		setenv("SSH_ASKPASS", cn->askfile, 1);
 		_vz_set_nonblock(STDOUT_FILENO);

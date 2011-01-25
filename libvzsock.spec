@@ -56,6 +56,9 @@ Requires: %{name} = %{version}-%{release}
 %attr(644,root,root) %{_sampledir}/*
 
 %changelog
+* Tue Jan 25 2011 krasnov@parallels.com 5.0.0-2
+- close unused descriptors in child on ssh open_conn()
+
 * Mon Mar 22 2010 krasnov@parallels.com 4.6.0-2
 - IPv6 support for socket was added
 
