@@ -56,6 +56,10 @@ Requires: %{name} = %{version}-%{release}
 %attr(644,root,root) %{_sampledir}/*
 
 %changelog
+* Wed Mar  2 2011 krasnov@parallels.com 5.0.0-3
+- to close stderr on ssh open_conn() method
+  (https://jira.sw.ru:9443/browse/PSBM-6926)
+
 * Tue Jan 25 2011 krasnov@parallels.com 5.0.0-2
 - close unused descriptors in child on ssh open_conn()
 

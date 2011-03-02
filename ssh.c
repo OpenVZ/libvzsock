@@ -492,8 +492,12 @@ static int open_conn(struct vzsock_ctx *ctx, void *arg, void **conn)
 		Will not redirect stderr into out:
 		ssh halt if can not write on stderr and it's possible
 		that parent process not read from out in this time.
-		dup2(out[1], STDERR_FILENO);
+		But it's needs to close parent's stderr (https://jira.sw.ru:9443/browse/PSBM-6926)
+		so will redirect stderr to /dev/null
 */
+		int fd;
+		if ((fd = open("/dev/null", O_WRONLY)) != -1)
+			dup2(fd, STDERR_FILENO);
 		/* to close all unused descriptors */
 		int fdnum;
 		struct rlimit rlim;
@@ -739,10 +743,8 @@ static int _remote_rcopy(
 		close(in[1]); close(out[0]);
 		dup2(in[0], STDIN_FILENO);
 		dup2(out[1], STDOUT_FILENO);
-		if ((fd = open("/dev/null", O_WRONLY)) != -1) {
-			close(STDERR_FILENO);
+		if ((fd = open("/dev/null", O_WRONLY)) != -1)
 			dup2(fd, STDERR_FILENO);
-		}
 		close(in[0]); close(out[1]);
 		setenv("DISPLAY", "dummy", 0);
 		setenv("SSH_ASKPASS", askpath, 1);
@@ -771,13 +773,10 @@ static int _remote_rcopy(
 		/* allow C-c for child */
 		signal(SIGINT, SIG_DFL);
 		/* redirect stdout to out and stdin to in */
-		close(STDOUT_FILENO); close(STDIN_FILENO);
 		dup2(in[1], STDOUT_FILENO);
 		dup2(out[0], STDIN_FILENO);
-		if ((fd = open("/dev/null", O_WRONLY)) != -1) {
-			close(STDERR_FILENO);
+		if ((fd = open("/dev/null", O_WRONLY)) != -1)
 			dup2(fd, STDERR_FILENO);
-		}
 		close(in[1]); close(out[0]);
 		execvp(task_argv[0], (char *const *)task_argv);
 		exit(VZS_ERR_SYSTEM);
