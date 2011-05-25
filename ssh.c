@@ -351,11 +351,17 @@ static int test_conn(struct vzsock_ctx *ctx)
 			goto cleanup_7;
 		}
 		if (FD_ISSET(in[0], &fds)) {
-			if (read(in[0], buffer, sizeof(buffer)) < 0) {
+			int nbuf = 0;
+
+			if ((nbuf = read(in[0], buffer, sizeof(buffer))) < 0) {
 				rc = _vz_error(ctx, 
 					VZS_ERR_SYSTEM, "read() : %m");
 				goto cleanup_7;
 			}
+
+			/* _vzs_read_password expect zero-terminated prompt */
+			buffer[nbuf] = 0;
+
 			if (!ctx->lpassword) {
 				_vzs_read_password(buffer, 
 					ctx->password, sizeof(ctx->password));
