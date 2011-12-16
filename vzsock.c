@@ -19,7 +19,9 @@
 #include "ssh.h"
 #include "sock.h"
 #include "fd.h"
+#ifdef WITH_SSL
 #include "ssl.h"
+#endif
 
 /* context operations */
 
@@ -76,10 +78,12 @@ int vzsock_init(int type, struct vzsock_ctx *ctx)
 		if ((rc = _vzs_fd_init(ctx, handlers)))
 			goto cleanup_2;
 		break;
+#ifdef WITH_SSL
 	case VZSOCK_SSL:
 		if ((rc = _vzs_ssl_init(ctx, handlers)))
 			goto cleanup_2;
 		break;
+#endif
 	default:
 		rc = _vz_error(ctx, VZS_ERR_BAD_PARAM,
 			"undefined vzsock type: %d", type);
