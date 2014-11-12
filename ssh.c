@@ -197,7 +197,7 @@ static int test_conn(struct vzsock_ctx *ctx)
 {
 	int rc = 0;
 	int status;
-	pid_t pid, fpid, chpid;
+	pid_t pid, fpid, chpid, wpid;
 	fd_set fds;
 	char buffer[BUFSIZ];
 	int fd, sd;
@@ -313,21 +313,36 @@ static int test_conn(struct vzsock_ctx *ctx)
 		rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
 		goto cleanup_6;
 	} else if (chpid == 0) {
-		int nfd;
+		wpid = fork();
+		if (wpid < 0) {
+			rc = _vz_error(ctx, VZS_ERR_SYSTEM, "fork() : %m");
+			close(sig[1]);
+			exit(-1);
+		} else if (wpid == 0) {
+			int nfd;
 
-		close(in[1]); close(out[0]);
-		close(in[0]); close(out[1]);
-		close(sig[0]);
-		nfd = open("/dev/null", O_RDWR);
-		dup2(nfd, STDIN_FILENO);
-		dup2(nfd, STDOUT_FILENO);
-		dup2(nfd, STDERR_FILENO);
-		close(nfd);
-		setenv("DISPLAY", "dummy", 0);
-		setenv("SSH_ASKPASS", script, 1);
-		setsid();
-		execvp(argv[0], (char *const *)argv);
-		exit(VZS_ERR_SYSTEM);
+			close(in[1]); close(out[0]);
+			close(in[0]); close(out[1]);
+			close(sig[0]); close(sig[1]);
+			nfd = open("/dev/null", O_RDWR);
+			dup2(nfd, STDIN_FILENO);
+			dup2(nfd, STDOUT_FILENO);
+			dup2(nfd, STDERR_FILENO);
+			close(nfd);
+			setenv("DISPLAY", "dummy", 0);
+			setenv("SSH_ASKPASS", script, 1);
+			setsid();
+			execvp(argv[0], (char *const *)argv);
+			exit(VZS_ERR_SYSTEM);
+		}
+		while ((pid = waitpid(wpid, &status, 0)) == -1)
+			if (errno != EINTR)
+				break;
+		// Send signal to the parent that ssh exit
+		close(sig[1]);
+		if (pid < 0)
+			exit(-1);
+		exit(_vzs_check_exit_status(ctx, argv[0], status));
 	}
 	close(in[1]); close(out[0]);
 	close(sig[1]);
@@ -389,7 +404,7 @@ static int test_conn(struct vzsock_ctx *ctx)
 		goto cleanup_6;
 	}
 
-	rc = _vzs_check_exit_status(ctx, argv[0], status);
+	rc = _vzs_check_exit_status(ctx, "ssh wait daemon", status);
 	goto cleanup_6;
 
 cleanup_7:
