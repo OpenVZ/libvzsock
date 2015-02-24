@@ -49,7 +49,7 @@ $(NAME).a: $(OBJ)
 install:
 	install -d $(DESTDIR)/$(INCLUDEDIR)
 	install -d $(DESTDIR)/$(LIBDIR)
-	install -s -m 644 $(LIB_FULL) $(DESTDIR)/$(LIBDIR)/
+	install -s -m 755 $(LIB_FULL) $(DESTDIR)/$(LIBDIR)/
 	cp -af $(LIB_SHORT) $(DESTDIR)/$(LIBDIR)/
 	install -m 644 $(NAME).h $(DESTDIR)/$(INCLUDEDIR)/
 	install -m 644 $(NAME).a $(DESTDIR)/$(LIBDIR)/
