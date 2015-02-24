@@ -32,8 +32,8 @@ default: all
 all: $(NAME).a $(NAME).so $(LIB_FULL) $(LIB_SHORT)
 
 $(LIB_FULL): $(OBJ)
-	$(CC) $(CFLAGS) $(INC) $(LDFLAGS) -shared --as-needed \
-	-Wl,-soname=$(LIB_SHORT) $(LIBS) $^ -o $@
+	$(CC) $(CFLAGS) $(INC) $(LDFLAGS) -shared \
+	-Wl,--as-needed,-soname=$(LIB_SHORT) $(LIBS) $^ -o $@
 
 $(NAME).so: $(LIB_FULL)
 	ln -sf $(LIB_FULL) $(NAME).so
