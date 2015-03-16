@@ -414,9 +414,11 @@ int _vzs_writefd(
 					return 0;
 				continue;
 			}
-			if (errno == EAGAIN) {
+			if (errno == EINTR)
+				continue;
+			else if (errno == EAGAIN)
 				break;
-			} else {
+			else {
 				if (silent)
 					_vz_def_logger(LOG_ERR, "write() : %m");
 				else
@@ -441,7 +443,9 @@ int _vzs_writefd(
 				_vz_def_logger(LOG_ERR, 
 					"timeout (%d sec)", ctx->tmo);
 				return VZS_ERR_TIMEOUT;
-			} else if (rc <= 0) {
+			} else if (rc < 0) {
+				if (errno == EINTR)
+					continue;
 				_vz_def_logger(LOG_ERR, "select() : %m");
 				return VZS_ERR_SYSTEM;
 			}
@@ -493,7 +497,9 @@ int _vzs_recv_str(
 				*size = sz;
 				return 0;
 			}
-			if (errno == EAGAIN)
+			if (errno == EINTR)
+				continue;
+			else if (errno == EAGAIN)
 				/* wait next data */
 				break;
 			else
@@ -516,9 +522,12 @@ int _vzs_recv_str(
 			if (rc == 0)
 				return _vz_error(ctx, VZS_ERR_TIMEOUT,
 					"recv_str : timeout (%d sec)", ctx->tmo);
-			else if (rc <= 0)
+			else if (rc < 0) {
+				if (errno == EINTR)
+					continue;
 				return _vz_error(ctx, VZS_ERR_CONN_BROKEN,
 					"recv_str : select() : %m");
+			}
 		} while (!FD_ISSET(fd, &fds));
 	}
 
