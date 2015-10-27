@@ -316,6 +316,21 @@ static int close_conn(struct vzsock_ctx *ctx, void *conn)
 static int set_conn(struct vzsock_ctx *ctx, void *conn, 
 		int type, void *data, size_t size)
 {
+	struct sock_conn *cn = (struct sock_conn *)conn;
+
+	switch (type) {
+	case VZSOCK_DATA_BLOCKING:
+	{
+		if (size < sizeof(int))
+			return _vz_error(ctx, VZS_ERR_BAD_PARAM,
+				"It is't enough buffer size (%d) "\
+				"for data type : %d", size, type);
+		if (__vz_set_block(cn->sock, *((int*)data)))
+			return -1;
+		break;
+	}
+	}
+
 	return 0;
 }
 
