@@ -45,7 +45,7 @@ int transport = VZSOCK_SOCK;
 static void usage()
 {
 	fprintf(stderr, 
-"Virtuozzo vzsock test client\n" \
+"vzsock test client\n" \
 "Usage:\n" \
 "%s [-v] [-t <option>]\n" \
 "%s -h\n" \
