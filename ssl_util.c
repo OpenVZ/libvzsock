@@ -1,6 +1,6 @@
 /* $Id: ssl.c 130669 2008-07-04 11:19:36Z krasnov $
  *
- * Copyright (c) 2016 Parallels IP Holdings GmbH
+ * Copyright (c) 2016-2017, Parallels International GmbH
  *
  * This file is part of OpenVZ libraries. OpenVZ is free software; you can
  * redistribute it and/or modify it under the terms of the GNU Lesser General
@@ -17,7 +17,7 @@
  * <http://www.gnu.org/licenses/> or write to Free Software Foundation,
  * 51 Franklin Street, Fifth Floor Boston, MA 02110, USA.
  *
- * Our contact details: Parallels IP Holdings GmbH, Vordergasse 59, 8200
+ * Our contact details: Parallels International GmbH, Vordergasse 59, 8200
  * Schaffhausen, Switzerland.
  *
  */
