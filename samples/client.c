@@ -18,6 +18,7 @@
  *
  * Our contact details: Parallels International GmbH, Vordergasse 59, 8200
  * Schaffhausen, Switzerland.
+ *
  */
 
 #include <stdio.h>

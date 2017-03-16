@@ -1,5 +1,4 @@
-/* $Id: util.c,v 1.23 2008/06/30 13:21:14 krasnov Exp $
- *
+/*
  * Copyright (c) 2006-2017, Parallels International GmbH
  *
  * This file is part of OpenVZ libraries. OpenVZ is free software; you can
@@ -22,6 +21,7 @@
  *
  * queues
  */
+
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>

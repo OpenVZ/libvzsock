@@ -1,5 +1,4 @@
-/* $Id: sock.c,v 1.26 2008/06/26 14:40:12 krasnov Exp $
- *
+/*
  * Copyright (c) 2006-2017, Parallels International GmbH
  *
  * This file is part of OpenVZ libraries. OpenVZ is free software; you can
@@ -21,6 +20,7 @@
  * Schaffhausen, Switzerland.
  *
  */
+
 #include <limits.h>
 #include <sys/wait.h>
 #include <sys/types.h>

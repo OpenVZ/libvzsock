@@ -1,5 +1,4 @@
-/* $Id: vzmd.cpp 130669 2008-07-04 11:19:36Z krasnov $
- *
+/*
  * Copyright (c) 2016-2017, Parallels International GmbH
  *
  * This file is part of OpenVZ libraries. OpenVZ is free software; you can
@@ -22,6 +21,7 @@
  *
  * vzmigrate daemon
  */
+
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/stat.h>

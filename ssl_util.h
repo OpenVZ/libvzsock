@@ -1,5 +1,4 @@
 /*
- *
  * Copyright (c) 2016-2017, Parallels International GmbH
  *
  * This file is part of OpenVZ libraries. OpenVZ is free software; you can

@@ -1,5 +1,4 @@
-/* $Id: util.h,v 1.21 2008/06/26 14:40:12 krasnov Exp $
- *
+/*
  * Copyright (c) 2016-2017, Parallels International GmbH
  *
  * This file is part of OpenVZ libraries. OpenVZ is free software; you can
